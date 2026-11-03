@@ -1,0 +1,49 @@
+{
+    "name": "shubo/module-flitt",
+    "description": "Flitt (TBC Bank) payment gateway for Magento 2",
+    "type": "magento2-module",
+    "license": "Apache-2.0",
+    "keywords": [
+        "magento2",
+        "magento2-module",
+        "payment",
+        "flitt",
+        "tbc",
+        "georgia"
+    ],
+    "homepage": "https://github.com/nshubitidze/shubo-flitt",
+    "authors": [
+        {
+            "name": "Nikoloz Shubitidze",
+            "homepage": "https://github.com/nshubitidze"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/nshubitidze/shubo-flitt/issues",
+        "source": "https://github.com/nshubitidze/shubo-flitt"
+    },
+    "require": {
+        "php": "~8.3.0||~8.4.0||~8.5.0",
+        "flittpayments/php-sdk": "^1.0",
+        "laminas/laminas-http": "^2.23",
+        "magento/framework": "^103.0",
+        "magento/module-checkout": "^100.4",
+        "magento/module-config": "^101.2",
+        "magento/module-cron": "^100.4",
+        "magento/module-csp": "^100.4",
+        "magento/module-payment": "^100.4",
+        "magento/module-quote": "^101.2",
+        "magento/module-sales": "^103.0",
+        "magento/module-store": "^101.1",
+        "magento/module-ui": "^101.2",
+        "magento/module-vault": "^101.2"
+    },
+    "autoload": {
+        "files": [
+            "registration.php"
+        ],
+        "psr-4": {
+            "Shubo\\Flitt\\": ""
+        }
+    }
+}

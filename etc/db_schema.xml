@@ -1,0 +1,75 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Shubo. All rights reserved.
+ */
+-->
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
+    <!--
+        Payment ledger: one row per minted Flitt-side order. Deliberately has
+        NO foreign keys — a row must outlive the quote (quote cleaner) and is
+        the callback's only path to store-scoped credentials before any
+        signature can be verified (quote.reserved_order_id is unindexed).
+    -->
+    <table name="shubo_flitt_order" resource="default" engine="innodb" comment="Flitt Payment Ledger">
+        <column xsi:type="int" name="entity_id" unsigned="true" nullable="false" identity="true"
+                comment="Entity ID"/>
+        <column xsi:type="varchar" name="flitt_order_id" nullable="false" length="128"
+                comment="Flitt-side order id ({prefix}_{increment}_{unixtime})"/>
+        <column xsi:type="smallint" name="store_id" unsigned="true" nullable="false" default="0"
+                comment="Store scope (resolves merchant credentials)"/>
+        <column xsi:type="int" name="quote_id" unsigned="true" nullable="true"
+                comment="Quote the token was minted for"/>
+        <column xsi:type="varchar" name="increment_id" nullable="false" length="32"
+                comment="Reserved / placed Magento order increment id"/>
+        <column xsi:type="bigint" name="amount" unsigned="true" nullable="false"
+                comment="Minted amount in minor units"/>
+        <column xsi:type="varchar" name="currency" nullable="false" length="3"
+                comment="Currency code"/>
+        <column xsi:type="int" name="lifetime" unsigned="true" nullable="false"
+                comment="Order lifetime in seconds the token was minted with"/>
+        <column xsi:type="varchar" name="state" nullable="false" length="32" default="minted"
+                comment="Ledger state"/>
+        <column xsi:type="bigint" name="payment_id" unsigned="true" nullable="true"
+                comment="Flitt payment id"/>
+        <column xsi:type="varchar" name="order_status" nullable="true" length="32"
+                comment="Last Flitt order_status delivered"/>
+        <column xsi:type="varchar" name="response_code" nullable="true" length="16"
+                comment="Last Flitt response code delivered"/>
+        <column xsi:type="varchar" name="masked_card" nullable="true" length="32"
+                comment="Masked card number"/>
+        <column xsi:type="varchar" name="card_type" nullable="true" length="32"
+                comment="Card scheme"/>
+        <column xsi:type="int" name="card_bin" unsigned="true" nullable="true"
+                comment="Card BIN"/>
+        <column xsi:type="varchar" name="rectoken" nullable="true" length="255"
+                comment="Recurring/vault card token (callback-borne)"/>
+        <column xsi:type="varchar" name="rectoken_lifetime" nullable="true" length="32"
+                comment="Rectoken expiry as delivered"/>
+        <column xsi:type="int" name="callback_count" unsigned="true" nullable="false" default="0"
+                comment="Signature-verified callback deliveries"/>
+        <column xsi:type="timestamp" name="last_callback_at" on_update="false" nullable="true"
+                comment="Last signature-verified callback"/>
+        <column xsi:type="timestamp" name="created_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP"
+                comment="Minted at"/>
+        <column xsi:type="timestamp" name="updated_at" on_update="true" nullable="false" default="CURRENT_TIMESTAMP"
+                comment="Last update"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="entity_id"/>
+        </constraint>
+        <constraint xsi:type="unique" referenceId="SHUBO_FLITT_ORDER_FLITT_ORDER_ID">
+            <column name="flitt_order_id"/>
+        </constraint>
+        <index referenceId="SHUBO_FLITT_ORDER_INCREMENT_ID" indexType="btree">
+            <column name="increment_id"/>
+        </index>
+        <index referenceId="SHUBO_FLITT_ORDER_QUOTE_ID" indexType="btree">
+            <column name="quote_id"/>
+        </index>
+        <index referenceId="SHUBO_FLITT_ORDER_STATE_CREATED_AT" indexType="btree">
+            <column name="state"/>
+            <column name="created_at"/>
+        </index>
+    </table>
+</schema>

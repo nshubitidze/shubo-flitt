@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Cron:etc/crontab.xsd">
+    <group id="default">
+        <!-- The safety net: settles orders whose callback never landed,
+             cancels stranded pending orders, reverses parked/orphaned holds. -->
+        <job name="shubo_flitt_reconcile" instance="Shubo\Flitt\Cron\PendingOrderReconciler" method="execute">
+            <schedule>*/15 * * * *</schedule>
+        </job>
+    </group>
+</config>

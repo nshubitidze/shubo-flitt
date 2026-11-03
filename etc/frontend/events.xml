@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Shubo. All rights reserved.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    <!-- The Back button from the Flitt hosted page skips our return
+         controller — restore the cart when the customer resurfaces on the
+         cart or checkout page with a pending redirect-mode order. -->
+    <event name="controller_action_predispatch_checkout_cart_index">
+        <observer name="shubo_flitt_restore_cart_on_return" instance="Shubo\Flitt\Observer\RestoreCartOnReturn"/>
+    </event>
+    <event name="controller_action_predispatch_checkout_index_index">
+        <observer name="shubo_flitt_restore_cart_on_return" instance="Shubo\Flitt\Observer\RestoreCartOnReturn"/>
+    </event>
+</config>
