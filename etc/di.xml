@@ -1,0 +1,247 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+
+    <!-- Payment method facade: the MethodInterface checkout/sales talk to. -->
+    <virtualType name="ShuboFlittFacade" type="Magento\Payment\Model\Method\Adapter">
+        <arguments>
+            <argument name="code" xsi:type="const">Shubo\Flitt\Model\Ui\ConfigProvider::CODE</argument>
+            <argument name="formBlockType" xsi:type="string">Magento\Payment\Block\Form</argument>
+            <argument name="infoBlockType" xsi:type="string">Magento\Payment\Block\ConfigurableInfo</argument>
+            <argument name="valueHandlerPool" xsi:type="object">ShuboFlittValueHandlerPool</argument>
+            <argument name="commandPool" xsi:type="object">ShuboFlittCommandPool</argument>
+            <argument name="validatorPool" xsi:type="object">ShuboFlittValidatorPool</argument>
+        </arguments>
+    </virtualType>
+
+    <!-- Availability validators: Adapter::canUseForCurrency() consults the
+         "currency" entry, hiding the method for non-allowed order currencies. -->
+    <virtualType name="ShuboFlittValidatorPool" type="Magento\Payment\Gateway\Validator\ValidatorPool">
+        <arguments>
+            <argument name="validators" xsi:type="array">
+                <item name="currency" xsi:type="string">Shubo\Flitt\Gateway\Validator\CurrencyValidator</item>
+            </argument>
+        </arguments>
+    </virtualType>
+
+    <!-- Capability queries and config reads (can_*, payment_action, fields) resolve to payment/shubo_flitt/*.
+         can_initialize is DERIVED, not configured: redirect mode places order-first
+         through the initialize command, embed mode through the verify commands. -->
+    <virtualType name="ShuboFlittValueHandlerPool" type="Magento\Payment\Gateway\Config\ValueHandlerPool">
+        <arguments>
+            <argument name="handlers" xsi:type="array">
+                <item name="default" xsi:type="string">ShuboFlittConfigValueHandler</item>
+                <item name="can_initialize" xsi:type="string">Shubo\Flitt\Gateway\ValueHandler\CanInitializeHandler</item>
+            </argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="ShuboFlittConfigValueHandler" type="Magento\Payment\Gateway\Config\ConfigValueHandler">
+        <arguments>
+            <argument name="configInterface" xsi:type="object">Shubo\Flitt\Gateway\Config</argument>
+        </arguments>
+    </virtualType>
+
+    <!-- Placement commands verify the already-made payment against the signed
+         status API (pay-first embed); "capture" is a strategy because the same
+         pool key also serves admin Invoice → Capture Online on Authorize Only
+         orders (real capture of the parked hold). refund/void/cancel are the
+         merchant money ops behind Magento's NATIVE admin buttons —
+         void and cancel share one implementation (both release the open hold). -->
+    <virtualType name="ShuboFlittCommandPool" type="Magento\Payment\Gateway\Command\CommandPool">
+        <arguments>
+            <argument name="commands" xsi:type="array">
+                <item name="authorize" xsi:type="string">Shubo\Flitt\Gateway\Command\VerifyAuthorizationCommand</item>
+                <item name="capture" xsi:type="string">Shubo\Flitt\Gateway\Command\CaptureStrategyCommand</item>
+                <item name="refund" xsi:type="string">Shubo\Flitt\Gateway\Command\RefundCommand</item>
+                <item name="void" xsi:type="string">Shubo\Flitt\Gateway\Command\VoidCommand</item>
+                <item name="cancel" xsi:type="string">Shubo\Flitt\Gateway\Command\VoidCommand</item>
+                <item name="initialize" xsi:type="string">Shubo\Flitt\Gateway\Command\InitializeCommand</item>
+                <item name="vault_authorize" xsi:type="string">Shubo\Flitt\Gateway\Command\VaultAuthorizeCommand</item>
+                <item name="vault_sale" xsi:type="string">Shubo\Flitt\Gateway\Command\VaultSaleCommand</item>
+            </argument>
+        </arguments>
+    </virtualType>
+
+    <!-- Saved cards: Magento_Vault facade over this gateway. The
+         vault method resolves active/title against its own config node and
+         delegates payment_action + capabilities to the provider; its
+         vault_authorize / vault_sale commands run through the provider's
+         command pool via the CommandManagerPool (keyed by PROVIDER code —
+         that is core Vault's lookup key). -->
+    <virtualType name="ShuboFlittVaultPaymentConfig" type="Magento\Payment\Gateway\Config\Config">
+        <arguments>
+            <argument name="methodCode" xsi:type="const">Shubo\Flitt\Model\Ui\ConfigProvider::VAULT_CODE</argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="ShuboFlittVaultPaymentValueHandler" type="VaultPaymentDefaultValueHandler">
+        <arguments>
+            <argument name="configInterface" xsi:type="object">ShuboFlittVaultPaymentConfig</argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="ShuboFlittVaultPaymentValueHandlerPool" type="VaultPaymentValueHandlerPool">
+        <arguments>
+            <argument name="handlers" xsi:type="array">
+                <item name="default" xsi:type="string">ShuboFlittVaultPaymentValueHandler</item>
+            </argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="ShuboFlittVaultFacade" type="Magento\Vault\Model\Method\Vault">
+        <arguments>
+            <argument name="config" xsi:type="object">ShuboFlittVaultPaymentConfig</argument>
+            <argument name="valueHandlerPool" xsi:type="object">ShuboFlittVaultPaymentValueHandlerPool</argument>
+            <argument name="vaultProvider" xsi:type="object">ShuboFlittFacade</argument>
+            <argument name="code" xsi:type="const">Shubo\Flitt\Model\Ui\ConfigProvider::VAULT_CODE</argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="ShuboFlittCommandManager" type="Magento\Payment\Gateway\Command\CommandManager">
+        <arguments>
+            <argument name="commandPool" xsi:type="object">ShuboFlittCommandPool</argument>
+        </arguments>
+    </virtualType>
+    <type name="Magento\Payment\Gateway\Command\CommandManagerPool">
+        <arguments>
+            <argument name="executors" xsi:type="array">
+                <item name="shubo_flitt" xsi:type="string">ShuboFlittCommandManager</item>
+            </argument>
+        </arguments>
+    </type>
+
+    <!-- Dedicated log channel: var/log/shubo_flitt.log. Request summaries and
+         errors are always written; full masked payload dumps only when
+         payment/shubo_flitt/debug is enabled. -->
+    <virtualType name="ShuboFlittLogHandler" type="Magento\Framework\Logger\Handler\Base">
+        <arguments>
+            <argument name="fileName" xsi:type="string">/var/log/shubo_flitt.log</argument>
+        </arguments>
+    </virtualType>
+    <virtualType name="ShuboFlittLogger" type="Magento\Framework\Logger\Monolog">
+        <arguments>
+            <argument name="name" xsi:type="string">shubo_flitt</argument>
+            <argument name="handlers" xsi:type="array">
+                <item name="system" xsi:type="object">ShuboFlittLogHandler</item>
+            </argument>
+        </arguments>
+    </virtualType>
+
+    <type name="Shubo\Flitt\Model\FlittClient">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Controller\Checkout\Token">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Model\Checkout\PaymentVerifier">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Model\Checkout\HoldCapture">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Model\Checkout\PaymentStateResolver">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Controller\Checkout\State">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Model\Callback\Processor">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Model\Callback\OrderSettler">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Controller\Callback\Index">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Observer\MarkLedgerSettled">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Observer\RestoreCartOnReturn">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Model\Checkout\PaidQuotePlacer">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+
+    <!-- No session may start on the cross-site POST return leg — the
+         guest Set-Cookie would overwrite the customer's session (logout).
+         PayPal's TransparentSessionChecker pattern. -->
+    <type name="Magento\Framework\Session\SessionStartChecker">
+        <plugin name="shubo_flitt_return_session_checker" type="Shubo\Flitt\Plugin\ReturnSessionChecker"/>
+    </type>
+    <type name="Shubo\Flitt\Controller\Redirect\Start">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Model\Checkout\ReturnHandler">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Controller\Redirect\Complete">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Cron\PendingOrderReconciler">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Gateway\Command\CaptureCommand">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Gateway\Command\RefundCommand">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Gateway\Command\VoidCommand">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Model\Vault\RecurringCharge">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+    <type name="Shubo\Flitt\Model\Vault\TokenPersister">
+        <arguments>
+            <argument name="logger" xsi:type="object">ShuboFlittLogger</argument>
+        </arguments>
+    </type>
+
+    <!-- Keep the payment secret key out of config dumps/exports. -->
+    <type name="Magento\Config\Model\Config\TypePool">
+        <arguments>
+            <argument name="sensitive" xsi:type="array">
+                <item name="payment/shubo_flitt/secret_key" xsi:type="string">1</item>
+            </argument>
+        </arguments>
+    </type>
+</config>
