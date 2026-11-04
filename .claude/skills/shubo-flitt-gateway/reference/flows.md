@@ -98,11 +98,17 @@ Per ledger row, under `OrderLock`, decided on the signed status, batch cap 50:
 
 - **Stale mints** (`minted`/`declined` past lifetime + grace): paid after all →
   settle the pending order (missed callback) or park `approved`; dead →
-  ledger `expired`/`declined` + cancel the stranded pending order.
+  ledger `expired`/`declined` + cancel the stranded pending order. Flitt
+  answers "Order not found" (1018 — it never created the session, e.g.
+  after the merchant account was switched) → `expired` + cancel too, so the
+  row is not polled forever.
 - **Parked holds** (`approved` idle past grace): matching pending order →
   settle; placed order but observer missed → mark settled; paid embed session
   with no order → `PaidQuotePlacer` places it (same quote, same reserved
-  increment, exact money match); otherwise → **reverse in full**
+  increment, exact money match; a guest quote first gets the customer
+  fields core's `placeOrder()` would set — e-mail from the billing address —
+  and the confirmation e-mail is sent, because core sends it only in the
+  storefront/web API areas); otherwise → **reverse in full**
   (`reverse_id rec-{increment}`), ledger `reversed`.
 
 Core's `sales_clean_orders` cron cancels pending orders after
@@ -133,6 +139,8 @@ action. Wallet payments were charged in one stage, so "void" is a refund.
   `vault_sale`. Core Vault resets the payment method to `shubo_flitt`, so
   callbacks, refunds, voids and the reconciler all apply unchanged. Dead-token
   errors 1035/1078/1082 soft-delete the vault entry. No 3DS on `/recurring`.
+  The same in both checkout types: a saved-card payment never takes redirect
+  mode's order-first `initialize` path (`CanInitializeHandler`).
 - **My Account → Stored Payment Methods:** `CardRenderer` claims
   `shubo_flitt` tokens (core silently hides unclaimed ones).
 - **Wallets:** toggles add Google/Apple Pay to the embed. Wallet taps bypass

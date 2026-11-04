@@ -80,7 +80,15 @@ wins. A production merchant may behave differently.
   return relay), which timed out over HTTP and HTTPS while `pay.flitt.com`
   answered. The customer never reached `response_url` although the hold was
   approved; the callback or the reconciler has to settle such orders. The
-  embed is not affected. [live 2026-09-28]
+  embed is not affected. [live 2026-09-28] **Working again:** the same relay
+  passed the browser on to an `http://` store's `response_url` (pay and
+  Cancel); to an `https://` store the browser went straight back, without
+  the relay. [live 2026-11-03]
+- To a public HTTPS store the callback arrived for every paid session (1–2
+  callbacks each, all answered 200), also when the browser's return was
+  blocked — the callback alone settled the order. After a full `/reverse`
+  of a parked payment Flitt sent one more callback, `order_status`
+  `reversed`, `reversal_amount` = the full amount. [live 2026-11-03]
 
 ## Saved cards (rectoken)
 
@@ -127,3 +135,18 @@ describe the widget's events.
   `www.gstatic.com` images) and the Apple Pay SDK from
   `applepay.cdn-apple.com`. The Google Pay button refuses to render on plain
   HTTP (needs a secure context). [live 2026-07-24]
+- On HTTPS with the test merchant both wallet buttons render inside the
+  widget (Google's button image is an iframe from `pay.google.com`), with no
+  CSP violations. A tap on Google Pay opens Google's payment sheet in a
+  popup with `environment: TEST` and `merchantName: "Test merchant"` (the
+  widget decides the environment, not the module). [live 2026-11-03]
+- A Google Pay payment in that TEST sheet reached Flitt as
+  `additional_info.payment_method` = **`googlepay`**, card Amex
+  `378282…0005` (Google's TEST card), and was declined: `response_code`
+  **1015** "Invalid card number", `order_status` `processing` (callback).
+  The same session stayed payable by card. On the same merchant a typed
+  Visa `4111 1111 1111 1111` (not in Flitt's test-card list) was approved,
+  so test mode does not accept only its own list. [live 2026-11-03]
+- In Chrome the Apple Pay button opens Apple's "Scan Code with iPhone"
+  window (`applepay.cdn-apple.com/applepaycode`, iOS 18+); on a Mac in
+  Safari it is the normal Apple Pay sheet. [live 2026-11-03]

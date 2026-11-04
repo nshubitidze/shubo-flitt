@@ -7,6 +7,7 @@
             <module name="Magento_Config"/>
             <module name="Magento_Cron"/>
             <module name="Magento_Csp"/>
+            <module name="Magento_Customer"/>
             <module name="Magento_Payment"/>
             <module name="Magento_Quote"/>
             <module name="Magento_Sales"/>

@@ -18,11 +18,9 @@ answered (by Flitt or live), move the answer into `live-findings.md` or
 - The wire format of a real callback: the docs show flat JSON; the module
   also accepts a `{"response": ...}` wrapper and form fields because older
   gateways sent those. Not yet observed against a public URL.
-- Does Flitt send a callback for a merchant-initiated reverse or capture
-  (e.g. a `reversed` callback after a full refund)? The module does not
-  depend on it.
-- Is the `secure-redirect.cloudipsp.com` return relay outage permanent or
-  was it temporary? Not reported to Flitt yet.
+- Does Flitt send a callback for a merchant-initiated capture or a partial
+  reverse? (A full reverse does — see `live-findings.md`.) The module does
+  not depend on either.
 - The docs allow the return by POST or GET; only POST has been seen.
 
 ## Holds and payments
@@ -30,9 +28,13 @@ answered (by Flitt or live), move the answer into `live-findings.md` or
 - How long does an uncaptured `preauth=Y` hold stay on the card before the
   issuer releases it? Not documented; `lifetime` covers only the unpaid
   order. The module reverses orphan holds itself.
-- A completed Apple Pay / Google Pay payment has not been observed: the live
-  value of `additional_info.payment_method`, and whether `preauth=Y` is
-  ignored for wallets as the docs imply.
+- A completed Apple Pay / Google Pay payment has not been observed: whether
+  `preauth=Y` is ignored for wallets as the docs imply, and Apple's live
+  `additional_info.payment_method` value (Google's is `googlepay`).
+- Can a Google Pay payment succeed on the test merchant at all? Google's
+  TEST sheet sent its Amex test card and Flitt declined it with 1015; which
+  card (Google's Visa `…1111`?) Flitt test mode accepts is unknown — ask
+  Flitt.
 - 3-D Secure on a production merchant: which issuer (ACS) origins the
   challenge loads — test mode showed only `pay.flitt.com` (matters for the
   checkout CSP `frame-src`).

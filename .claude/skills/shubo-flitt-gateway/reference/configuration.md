@@ -16,7 +16,7 @@ config paths elsewhere.
 | `secret_key` | — | website | Payment secret; `obscure` + encrypted + registered sensitive (never in config dumps) |
 | `order_id_prefix` | empty | website | Tag in the Flitt order id `{prefix}_{increment}_{unixtime}`; set a distinct one per shop when several Magento instances share one Flitt merchant. Alphanumeric |
 | `checkout_type` | `embed` | website | `embed` = card form inside checkout (pay-first); `redirect` = Flitt hosted page (order-first) |
-| `wallet_google_pay` / `wallet_apple_pay` | 0 | website | Wallet buttons in the EMBED form. One-stage charge (no reversible hold). Apple Pay also needs domain verification via Flitt support; both need HTTPS. Hosted-page rails are managed in the Flitt portal |
+| `wallet_google_pay` / `wallet_apple_pay` | 0 | website | Wallet buttons in the EMBED form. One-stage charge (no reversible hold). Both need HTTPS and the store's domain activated by Flitt: Apple Pay — the `apple-developer-merchantid-domain-association` file from Flitt support served at `https://<domain>/.well-known/apple-developer-merchantid-domain-association` — as a real file in `pub/.well-known/`: Magento 2.4.9's bundled `Magento_PaymentServicesPaypal` answers that path with PayPal's file when no file exists; Google Pay — the domain registered in a Google Pay developer account. Until then the buttons may show but payments fail. Hosted-page rails are managed in the Flitt portal |
 | `vault_active` → `payment/shubo_flitt_vault/active` | 0 | website | Saved cards: logged-in customers can save and reuse cards (Flitt rectoken; needs recurring enabled on the merchant) |
 | `vault_title` → `payment/shubo_flitt_vault/title` | `Saved Cards (TBC Bank)` | store | Saved-card method title |
 | `allowed_currencies` | `GEL` | website | Multiselect GEL/USD/EUR (Flitt Georgia). Method hidden for other order currencies (`CurrencyValidator`) |
@@ -66,4 +66,6 @@ refuses localhost/IP origins).
 - For saved cards: recurring/rectoken enabled (errors 1059/1060 are per-account flags).
 - Hosted page: configure it **card-only** in the portal for production — other
   rails (pay-by-bank, installments) cannot preauth and would one-stage charge.
-- Apple Pay: domain verification file via Flitt support.
+- Apple Pay / Google Pay in the embed: every storefront domain registered
+  (Apple: Flitt's domain-association file under `/.well-known/`; Google:
+  Google Pay developer account) and activated by Flitt.

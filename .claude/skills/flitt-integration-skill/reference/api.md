@@ -206,6 +206,13 @@ Before any money step the module checks `order_id`, `merchant_id`,
   `apple-developer-merchantid-domain-association` file from Flitt support,
   serve it under `/.well-known/` on every (sub)domain, ask Flitt to activate
   the domain. https://docs.flitt.com/api/applepay-web/ [docs]
+- Google Pay embedded on the merchant's site needs every (sub)domain that
+  shows the button registered in a Google Pay developer account, and Flitt
+  asked to activate the domain with Google.
+  https://docs.flitt.com/api/googlepay-web/ [docs]
+- Testing: on a test-mode merchant Flitt converts a real Apple Pay card into
+  a test token (pay with a real card in Apple Wallet). The docs say nothing
+  similar for Google Pay. https://docs.flitt.com/api/testing/ [docs]
 
 ## Embed widget (checkout-vue) — https://docs.flitt.com/api/embedded-custom/
 
@@ -225,7 +232,7 @@ Before any money step the module checks `order_id`, `merchant_id`,
 | 1007 | parameter incorrect | generic failure; a bogus rectoken also gives 1007 [live 2026-07-24] |
 | 1013 | duplicate `order_id` | order-id time tail always moves forward on a new session |
 | 1014 | invalid signature | — |
-| 1018 | order not found (status, reverse) | reconciler leaves the row for its next run |
+| 1018 | order not found (status, reverse) | a mint past its lifetime + grace is marked `expired` (Flitt never created it, e.g. after a merchant-account change); an `approved` row is left for the next run |
 | 1027 | preauth not allowed | must be enabled on the merchant; admin field note |
 | 1035 / 1078 / 1082 | token not found / deactivated by bank / expired | saved card removed |
 | 1059 / 1060 | rectoken / recurring not allowed for merchant | admin field note: ask Flitt |

@@ -78,4 +78,5 @@ Void/Cancel run from the admin as usual; the reconciler runs with
 - HTTPS storefront; `server_callback_url` publicly reachable (callbacks don't
   follow redirects — base URL must be the final one).
 - Cron running; consider `sales/orders/delete_pending_after` ≥ 660 min.
-- Apple Pay domain verification before enabling that toggle.
+- Wallets: the domain verified for Apple Pay and registered for Google Pay,
+  and activated by Flitt, before switching their toggles on.

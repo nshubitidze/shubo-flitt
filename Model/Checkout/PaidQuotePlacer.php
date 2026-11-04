@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Shubo\Flitt\Model\Checkout;
 
+use Magento\Customer\Api\Data\GroupInterface;
 use Magento\Framework\Exception\NoSuchEntityException;
+use Magento\Quote\Api\CartManagementInterface;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Quote\Model\Quote;
 use Magento\Quote\Model\QuoteManagement;
 use Magento\Sales\Model\Order;
+use Magento\Sales\Model\Order\Email\Sender\OrderSender;
 use Psr\Log\LoggerInterface;
 use Shubo\Flitt\Exception\PaymentInFlightException;
 use Shubo\Flitt\Gateway\Config;
@@ -34,12 +37,14 @@ class PaidQuotePlacer
      * @param CartRepositoryInterface $cartRepository
      * @param QuoteManagement $quoteManagement
      * @param Config $config
+     * @param OrderSender $orderSender
      * @param LoggerInterface $logger Bound to ShuboFlittLogger in di.xml.
      */
     public function __construct(
         private readonly CartRepositoryInterface $cartRepository,
         private readonly QuoteManagement $quoteManagement,
         private readonly Config $config,
+        private readonly OrderSender $orderSender,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -122,6 +127,8 @@ class PaidQuotePlacer
             return null;
         }
 
+        $this->prepareGuest($quote);
+
         // Runs the standard embed placement pipeline: quote → order,
         // CaptureStrategyCommand verifies the session against the signed
         // status and captures the hold inline. NOT placeOrder(): that
@@ -140,6 +147,58 @@ class PaidQuotePlacer
             $quoteId
         ));
 
+        // Core sends the confirmation from an observer registered only for
+        // the storefront and web API areas, so an order placed by cron would
+        // reach the customer silently.
+        if (!$order->getEmailSent()) {
+            try {
+                $this->orderSender->send($order);
+            } catch (\Throwable $e) {
+                $this->logger->error(sprintf(
+                    'place-paid-quote: order %s confirmation email failed: %s',
+                    (string)$order->getIncrementId(),
+                    $e->getMessage()
+                ));
+            }
+        }
+
         return $order;
+    }
+
+    /**
+     * Give a guest quote the customer fields core's placeOrder() sets just
+     * before it submits. A guest's e-mail reaches the quote only with the
+     * final place-order request — exactly the request a dead browser never
+     * sent — so without this submit() fails address validation ("Email has
+     * a wrong format") and the paid order is never created. The e-mail is
+     * already on the billing address, saved with the shipping step.
+     *
+     * @param Quote $quote
+     * @return void
+     */
+    private function prepareGuest(Quote $quote): void
+    {
+        if ($quote->getCheckoutMethod() !== CartManagementInterface::METHOD_GUEST && $quote->getCustomerId()) {
+            return;
+        }
+
+        $billingAddress = $quote->getBillingAddress();
+        $quote->setCustomerId(null);
+
+        if (!$quote->getCustomerEmail()) {
+            $quote->setCustomerEmail($billingAddress->getEmail());
+        }
+
+        if ($quote->getCustomerFirstname() === null && $quote->getCustomerLastname() === null) {
+            $quote->setCustomerFirstname($billingAddress->getFirstname());
+            $quote->setCustomerLastname($billingAddress->getLastname());
+
+            if ($billingAddress->getMiddlename() !== null) {
+                $quote->setCustomerMiddlename($billingAddress->getMiddlename());
+            }
+        }
+
+        $quote->setCustomerIsGuest(true);
+        $quote->setCustomerGroupId(GroupInterface::NOT_LOGGED_IN_ID);
     }
 }

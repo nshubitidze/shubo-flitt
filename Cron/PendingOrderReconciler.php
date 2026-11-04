@@ -37,6 +37,7 @@ use Shubo\Flitt\Model\Ui\ConfigProvider;
  *    pending_payment order (offline — no auth txn exists). This sweep is
  *    the ONLY place unpaid redirect orders are cancelled: the return leg
  *    leaves them pending (the Flitt session stays payable after the return).
+ *    A session Flitt answers "Order not found" for is dead too.
  *
  * 2. PARKED HOLDS — `approved` rows idle past grace: money with no settled
  *    order (browser-death orphans, double-method holds, superseded mints,
@@ -66,6 +67,11 @@ class PendingOrderReconciler
      * one full reversal per order, unique within its order_id scope).
      */
     private const string REVERSE_ID_PREFIX = 'rec-';
+
+    /**
+     * Flitt error_code "Order not found" (status and reverse requests).
+     */
+    private const int ERROR_ORDER_NOT_FOUND = 1018;
 
     /**
      * @param Ledger $ledger
@@ -165,7 +171,18 @@ class PendingOrderReconciler
     private function handleStaleMint(array $row): void
     {
         $flittOrderId = (string)$row['flitt_order_id'];
-        $status = $this->signedStatus($row);
+
+        try {
+            $status = $this->signedStatus($row);
+        } catch (FlittApiException $e) {
+            if ($e->getApiErrorCode() === self::ERROR_ORDER_NOT_FOUND) {
+                $this->expireUnknownMint($row);
+            }
+
+            // Other failures were logged by the client; the row waits for
+            // the next run.
+            return;
+        }
 
         if ($status === null) {
             return;
@@ -206,6 +223,34 @@ class PendingOrderReconciler
     }
 
     /**
+     * A stale mint Flitt answers "Order not found" for. Flitt never created
+     * the session under the configured merchant — typically because the
+     * store's merchant account was changed (test → live) while sessions of
+     * the old account were open — so no money can arrive on it and it would
+     * otherwise be polled on every run, forever. Only reached past the
+     * session's lifetime + grace, and only for minted/declined rows (never
+     * for money the ledger already saw approved).
+     *
+     * @param array<string, mixed> $row
+     * @return void
+     */
+    private function expireUnknownMint(array $row): void
+    {
+        $flittOrderId = (string)$row['flitt_order_id'];
+
+        if (!$this->ledger->transition($flittOrderId, Ledger::STATE_EXPIRED)) {
+            return;
+        }
+
+        $this->logger->warning(sprintf(
+            'reconcile: stale mint %s is unknown to Flitt (error %d) — marked expired',
+            $flittOrderId,
+            self::ERROR_ORDER_NOT_FOUND
+        ));
+        $this->cancelStranded($this->boundOrder($row), $flittOrderId);
+    }
+
+    /**
      * Money with no settled order: settle it home, place its order, or
      * reverse it.
      *
@@ -236,7 +281,13 @@ class PendingOrderReconciler
             return;
         }
 
-        $status = $this->signedStatus($row);
+        try {
+            $status = $this->signedStatus($row);
+        } catch (FlittApiException $e) {
+            // Logged by the client; the row waits for the next run. An
+            // approved row is money Flitt confirmed — never written off here.
+            return;
+        }
 
         if ($status === null) {
             return;
@@ -435,21 +486,18 @@ class PendingOrderReconciler
     }
 
     /**
-     * The row's signed status envelope, null when unavailable/unbound.
+     * The row's signed status envelope, null when it answers for another
+     * order. API failures are already logged by the client; callers decide
+     * what a failure means for their row.
      *
      * @param array<string, mixed> $row
      * @return array<string, mixed>|null
+     * @throws FlittApiException
      */
     private function signedStatus(array $row): ?array
     {
         $flittOrderId = (string)$row['flitt_order_id'];
-
-        try {
-            $status = $this->client->getOrderStatus($flittOrderId, (int)$row['store_id']);
-        } catch (FlittApiException $e) {
-            // Already logged by the client; the row waits for the next run.
-            return null;
-        }
+        $status = $this->client->getOrderStatus($flittOrderId, (int)$row['store_id']);
 
         if ((string)($status['order_id'] ?? '') !== $flittOrderId) {
             $this->logger->error(sprintf(
