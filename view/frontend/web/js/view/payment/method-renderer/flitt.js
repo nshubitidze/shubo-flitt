@@ -25,8 +25,9 @@ define([
     'Magento_Ui/js/model/messageList',
     'Magento_Checkout/js/view/payment/default',
     'Magento_Vault/js/view/payment/vault-enabler',
+    'Shubo_Flitt/js/model/widget-options',
     'mage/cookies'
-], function ($, ko, $t, quote, additionalValidators, globalMessageList, Component, VaultEnabler) {
+], function ($, ko, $t, quote, additionalValidators, globalMessageList, Component, VaultEnabler, widgetOptions) {
     'use strict';
 
     const CONTAINER_SELECTOR = '#shubo-flitt-embed';
@@ -513,7 +514,7 @@ define([
                 disabled.push('wallets');
             }
 
-            return {
+            return this.withWidgetOptions({
                 options: {
                     methods: ['card'],
                     'methods_disabled': disabled,
@@ -524,7 +525,30 @@ define([
                 params: {
                     token: token
                 }
-            };
+            });
+        },
+
+        /**
+         * Lay the store theme's presentation config (js/model/widget-options)
+         * under the module's own. The theme cannot reach `params` or any
+         * option key the module sets: those drive the payment flow (card
+         * rail only, no built-in pay button), not the look.
+         *
+         * @param {Object} config The module's config.
+         * @returns {Object}
+         */
+        withWidgetOptions: function (config) {
+            const custom = $.extend(true, {}, widgetOptions || {});
+
+            delete custom.params;
+
+            if ($.isPlainObject(custom.options)) {
+                Object.keys(config.options).forEach(function (key) {
+                    delete custom.options[key];
+                });
+            }
+
+            return $.extend(true, custom, config);
         },
 
         /**

@@ -41,6 +41,20 @@ defaults above (never sent/used as 0).
 |---|---|---|
 | `sales/orders/delete_pending_after` | 660 (core: 480) | Minutes after which core's `sales_clean_orders` cron cancels `pending_payment` orders. Raised to `lifetime` + `reconcile_grace` (10 h + 1 h) so core never cancels a redirect order its customer can still pay; the module's reconciler cancels it instead. Store-wide (every payment method). Admin: Sales → Sales → Orders Cron Settings → Pending Payment Order Lifetime; a saved value wins. Keep it ≥ lifetime + grace in minutes when changing either |
 
+## The embedded form's look (theme file, not config)
+
+The embed's presentation comes from the storefront theme, not from settings:
+the theme overrides `view/frontend/web/js/model/widget-options.js` (empty in
+the module) at `app/design/frontend/<Vendor>/<theme>/Shubo_Flitt/web/js/model/widget-options.js`
+and returns checkout-vue keys such as
+`{options: {theme: {type: 'light', preset: 'reset'}, lang: 'ka'}, messages: {...}, css_variable: {...}}`.
+`withWidgetOptions()` in the renderer merges it under the module's config:
+`params` and every option key the module sets (`methods`, `methods_disabled`,
+`wallet_methods_enabled`, `full_screen`, `show_pay_button`) cannot be
+overridden. Flitt loads `/latest/`, so recheck a styled form after Flitt
+updates. Card inputs are page elements (`.f-form-control` …) and take the
+theme's CSS; wallet buttons and 3-D Secure are iframes.
+
 ## Capability flags (don't flip casually)
 
 `can_authorize=1`, `can_capture=1` gate the placement-verification commands —
