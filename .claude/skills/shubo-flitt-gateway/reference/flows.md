@@ -151,7 +151,11 @@ then "void" is a refund.
   settle (`TokenPersister` at both settle sites; token from the signed
   status only — the ledger never stores the rectoken).
 - **Pay:** the `shubo_flitt_vault` method → `vault_authorize`/`vault_sale` →
-  `RecurringCharge`: `POST /recurring` with the rectoken and `preauth=Y`
+  `RecurringCharge`: first an earlier saved-card session of the same cart
+  (ledger `saved_card=1`, same amount, within lifetime) is checked on the
+  signed status — approved on the same card → continued (capture + record),
+  no second charge; still processing → refused for now; never created (1018)
+  or ended → closed in the ledger. Otherwise `POST /recurring` with the rectoken and `preauth=Y`
   (synchronous SIGNED envelope is authoritative), then capture for
   `vault_sale`. Core Vault resets the payment method to `shubo_flitt`, so
   callbacks, refunds, voids and the reconciler all apply unchanged. Dead-token

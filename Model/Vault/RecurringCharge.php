@@ -48,6 +48,16 @@ class RecurringCharge
     private const array TOKEN_DEAD_ERROR_CODES = [1035, 1078, 1082];
 
     /**
+     * Flitt's "order not found": the session was never created.
+     */
+    private const int ERROR_ORDER_NOT_FOUND = 1018;
+
+    /**
+     * Earlier sessions of a cart looked at before charging again.
+     */
+    private const int RESUME_CANDIDATES = 5;
+
+    /**
      * The /api/recurring request surface (Flitt docs: recurring order
      * parameters) —
      * builder output is filtered to this; notably lang and required_rectoken
@@ -117,27 +127,49 @@ class RecurringCharge
             array_flip(self::PAYLOAD_KEYS)
         );
         $payload['server_callback_url'] = $this->callbackUrl->forStore($storeId ?: null);
-        $payload['order_id'] = $this->mintPolicy->monotonicOrderId(
-            (string)$payload['order_id'],
-            (int)$payment->getAdditionalInformation(TokenManager::INFO_MINTED_AT)
-        );
-        $flittOrderId = (string)$payload['order_id'];
 
-        $this->ledger->recordMint(
-            $flittOrderId,
-            $storeId,
-            (int)$order->getQuoteId() ?: null,
-            $incrementId,
-            (int)$payload['amount'],
-            (string)$payload['currency'],
-            (int)$payload['lifetime'],
-        );
+        // A retry after a failed capture or a timeout must continue the
+        // payment already made on this card, never charge it again.
+        $resumed = $this->resumableSession($payment, $payload, $storeId);
 
-        foreach ($this->mintPolicy->mintFacts($payload) as $key => $value) {
-            $payment->setAdditionalInformation($key, $value);
+        if ($resumed !== null) {
+            [$flittOrderId, $response] = $resumed;
+            $payload['order_id'] = $flittOrderId;
+
+            foreach ($this->mintPolicy->mintFacts($payload) as $key => $value) {
+                $payment->setAdditionalInformation($key, $value);
+            }
+
+            $this->logger->info(sprintf(
+                'vault charge: order %s continues the approved saved-card payment %s (no second charge)',
+                $incrementId,
+                $flittOrderId
+            ));
+        } else {
+            $payload['order_id'] = $this->mintPolicy->monotonicOrderId(
+                (string)$payload['order_id'],
+                (int)$payment->getAdditionalInformation(TokenManager::INFO_MINTED_AT)
+            );
+            $flittOrderId = (string)$payload['order_id'];
+
+            $this->ledger->recordMint(
+                $flittOrderId,
+                $storeId,
+                (int)$order->getQuoteId() ?: null,
+                $incrementId,
+                (int)$payload['amount'],
+                (string)$payload['currency'],
+                (int)$payload['lifetime'],
+                savedCard: true,
+            );
+
+            foreach ($this->mintPolicy->mintFacts($payload) as $key => $value) {
+                $payment->setAdditionalInformation($key, $value);
+            }
+
+            $response = $this->execute($payment, $payload + ['rectoken' => $rectoken], $flittOrderId, $storeId);
         }
 
-        $response = $this->execute($payment, $payload + ['rectoken' => $rectoken], $flittOrderId, $storeId);
         $this->assertApproved($response, $payload, $flittOrderId, $incrementId, $storeId);
         $this->ledger->transition($flittOrderId, Ledger::STATE_APPROVED);
 
@@ -157,6 +189,111 @@ class RecurringCharge
             (string)$payload['currency'],
             $flittOrderId
         ));
+    }
+
+    /**
+     * An earlier saved-card payment of this cart that Flitt approved for the
+     * same amount on the same card, to continue instead of charging again.
+     * Sessions Flitt never created, or that ended, are closed in the ledger
+     * on the way; a session whose outcome is still open refuses the retry.
+     *
+     * @param Payment $payment
+     * @param array<string, string|int> $payload
+     * @param int $storeId
+     * @return array{0: string, 1: array<string, mixed>}|null Flitt order id and its signed status.
+     * @throws CommandException When an earlier payment may still be in progress.
+     */
+    private function resumableSession(Payment $payment, array $payload, int $storeId): ?array
+    {
+        $quoteId = (int)$payment->getOrder()->getQuoteId();
+
+        if ($quoteId === 0) {
+            return null;
+        }
+
+        $rows = $this->ledger->forQuote(
+            $quoteId,
+            [Ledger::STATE_MINTED, Ledger::STATE_APPROVED],
+            self::RESUME_CANDIDATES
+        );
+
+        foreach ($rows as $row) {
+            if ((int)($row['saved_card'] ?? 0) !== 1
+                || (int)$row['amount'] !== (int)$payload['amount']
+                || (string)$row['currency'] !== (string)$payload['currency']
+                || strtotime((string)$row['created_at'] . ' UTC') + (int)$row['lifetime'] < time()
+            ) {
+                continue;
+            }
+
+            $flittOrderId = (string)$row['flitt_order_id'];
+
+            try {
+                $status = $this->client->getOrderStatus($flittOrderId, $storeId);
+            } catch (FlittApiException $e) {
+                if ($e->getApiErrorCode() === self::ERROR_ORDER_NOT_FOUND) {
+                    // The earlier /recurring never reached Flitt.
+                    $this->ledger->transition($flittOrderId, Ledger::STATE_EXPIRED);
+
+                    continue;
+                }
+
+                throw new CommandException(
+                    __('Your payment could not be processed right now. Please try again in a moment.')
+                );
+            }
+
+            $orderStatus = (string)($status['order_status'] ?? '');
+
+            if ($orderStatus === 'approved') {
+                if ((int)($status['reversal_amount'] ?? 0) === 0
+                    && (int)($status['amount'] ?? -1) === (int)$payload['amount']
+                    && substr((string)($status['masked_card'] ?? ''), -4) === $this->savedCardLast4($payment)
+                ) {
+                    $this->ledger->transition($flittOrderId, Ledger::STATE_APPROVED);
+
+                    return [$flittOrderId, $status];
+                }
+
+                // Paid on another card or partly returned: not this payment —
+                // the reconciler returns it once this cart has its order.
+                $this->ledger->transition($flittOrderId, Ledger::STATE_APPROVED);
+
+                continue;
+            }
+
+            if (in_array($orderStatus, ['created', 'processing'], true)) {
+                throw new CommandException(
+                    __('Your payment could not be processed right now. Please try again in a moment.')
+                );
+            }
+
+            $this->ledger->transition(
+                $flittOrderId,
+                $orderStatus === 'reversed' ? Ledger::STATE_REVERSED : Ledger::STATE_DECLINED
+            );
+        }
+
+        return null;
+    }
+
+    /**
+     * Last four digits of the chosen saved card, from its token details.
+     *
+     * @param Payment $payment
+     * @return string
+     */
+    private function savedCardLast4(Payment $payment): string
+    {
+        $token = $payment->getExtensionAttributes()?->getVaultPaymentToken();
+
+        if (!$token instanceof PaymentTokenInterface) {
+            return '';
+        }
+
+        $details = json_decode((string)$token->getTokenDetails(), true);
+
+        return is_array($details) ? (string)($details['maskedCC'] ?? '') : '';
     }
 
     /**

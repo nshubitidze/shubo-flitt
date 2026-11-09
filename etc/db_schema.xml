@@ -45,6 +45,8 @@
                 comment="Card BIN"/>
         <column xsi:type="varchar" name="rectoken_lifetime" nullable="true" length="32"
                 comment="Rectoken expiry as delivered"/>
+        <column xsi:type="smallint" name="saved_card" unsigned="true" nullable="false" default="0"
+                comment="1 = a saved-card payment (POST /recurring)"/>
         <column xsi:type="int" name="callback_count" unsigned="true" nullable="false" default="0"
                 comment="Signature-verified callback deliveries"/>
         <column xsi:type="timestamp" name="last_callback_at" on_update="false" nullable="true"

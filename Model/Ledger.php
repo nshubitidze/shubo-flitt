@@ -101,6 +101,7 @@ class Ledger
      * @param int $amount Minor units (tetri/cents).
      * @param string $currency
      * @param int $lifetime Seconds the Flitt order stays payable.
+     * @param bool $savedCard True for a saved-card payment (POST /recurring).
      * @return void
      */
     public function recordMint(
@@ -111,6 +112,7 @@ class Ledger
         int $amount,
         string $currency,
         int $lifetime,
+        bool $savedCard = false,
     ): void {
         $this->resource->getConnection()->insertOnDuplicate(
             $this->resource->getTableName(self::TABLE),
@@ -123,6 +125,7 @@ class Ledger
                 'currency' => $currency,
                 'lifetime' => $lifetime,
                 'state' => self::STATE_MINTED,
+                'saved_card' => (int)$savedCard,
             ],
             ['store_id', 'quote_id', 'increment_id', 'amount', 'currency', 'lifetime']
         );

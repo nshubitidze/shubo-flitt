@@ -271,3 +271,15 @@ so a retry under a new increment id is settled, not reversed.
 Why: "inactive cart, no order with the reserved increment id" was always read as "placement in flight" — a customer
 who paid by card, saw the placement fail and finished with another method left the card payment unreleased until
 core deleted the cart (30 days), and enough such rows blocked the reconciler's batch.
+
+## A saved-card retry continues the payment already made
+
+Saved-card sessions are marked in the ledger (`saved_card = 1`). Before calling `/recurring`, `RecurringCharge` looks
+at the cart's earlier saved-card sessions for the same amount and asks Flitt's signed status: an approved one on the
+same card is continued (capture + record) instead of charging again; one that is still `created`/`processing`, or
+whose status cannot be read, refuses the retry ("try again in a moment"); one Flitt never created (1018) or that
+ended is closed in the ledger and a new charge goes out.
+
+Why: every attempt minted a new order id. When `/recurring` was approved but the capture after it failed or timed
+out — or `/recurring` itself timed out — placement failed and the customer's retry charged the saved card a second
+time.
