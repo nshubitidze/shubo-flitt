@@ -8,8 +8,12 @@ use Magento\Framework\Serialize\Serializer\Json;
 use Magento\Sales\Api\Data\OrderPaymentExtensionInterfaceFactory;
 use Magento\Sales\Model\Order\Payment;
 use Magento\Vault\Api\Data\PaymentTokenFactoryInterface;
+use Magento\Vault\Api\PaymentTokenManagementInterface;
+use Magento\Vault\Api\PaymentTokenRepositoryInterface;
 use Magento\Vault\Model\Ui\VaultConfigProvider;
 use Psr\Log\LoggerInterface;
+use Shubo\Flitt\Gateway\Config;
+use Shubo\Flitt\Model\Ui\ConfigProvider;
 
 /**
  * Turns the rectoken facts of a settled payment into a Magento_Vault card
@@ -49,12 +53,18 @@ class TokenPersister
      * @param PaymentTokenFactoryInterface $tokenFactory
      * @param OrderPaymentExtensionInterfaceFactory $extensionFactory
      * @param Json $json
+     * @param Config $config
+     * @param PaymentTokenManagementInterface $tokenManagement
+     * @param PaymentTokenRepositoryInterface $tokenRepository
      * @param LoggerInterface $logger Bound to ShuboFlittLogger in di.xml.
      */
     public function __construct(
         private readonly PaymentTokenFactoryInterface $tokenFactory,
         private readonly OrderPaymentExtensionInterfaceFactory $extensionFactory,
         private readonly Json $json,
+        private readonly Config $config,
+        private readonly PaymentTokenManagementInterface $tokenManagement,
+        private readonly PaymentTokenRepositoryInterface $tokenRepository,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -111,10 +121,36 @@ class TokenPersister
                 return;
             }
 
-            $token = $this->tokenFactory->create(PaymentTokenFactoryInterface::TOKEN_TYPE_CREDIT_CARD);
-            $token->setGatewayToken($rectoken);
-            $token->setExpiresAt($expiresAt);
-            $token->setTokenDetails($this->json->serialize($this->details($status, $lifetime)));
+            $details = $this->details($status, $lifetime);
+            // The issuing merchant (signed in the status; the store's own as
+            // fallback): the token is only usable there (TokenMerchant).
+            $details[TokenMerchant::DETAIL_KEY] = (int)$this->fact($status, 'merchant_id')
+                ?: $this->config->getMerchantId((int)$order->getStoreId());
+
+            // The same card saved again (same rectoken) must reuse its vault
+            // row: core detects duplicates by a public hash that includes the
+            // token details, while the table is unique on method + customer +
+            // gateway token — any change in the details (expiry, merchant)
+            // made core insert a second row, the insert failed and the whole
+            // order save rolled back after the payment was captured.
+            $token = $this->tokenManagement->getByGatewayToken(
+                $rectoken,
+                ConfigProvider::CODE,
+                (int)$order->getCustomerId()
+            );
+
+            if ($token !== null) {
+                $token->setExpiresAt($expiresAt);
+                $token->setTokenDetails($this->json->serialize($details));
+                $token->setIsActive(true);
+                $token->setIsVisible(true);
+                $this->tokenRepository->save($token);
+            } else {
+                $token = $this->tokenFactory->create(PaymentTokenFactoryInterface::TOKEN_TYPE_CREDIT_CARD);
+                $token->setGatewayToken($rectoken);
+                $token->setExpiresAt($expiresAt);
+                $token->setTokenDetails($this->json->serialize($details));
+            }
 
             $extensionAttributes = $payment->getExtensionAttributes() ?? $this->extensionFactory->create();
             $extensionAttributes->setVaultPaymentToken($token);
@@ -182,7 +218,7 @@ class TokenPersister
      *
      * @param array<string, mixed> $status
      * @param string $lifetime
-     * @return array<string, string>
+     * @return array<string, string|int>
      */
     private function details(array $status, string $lifetime): array
     {
@@ -200,7 +236,8 @@ class TokenPersister
         }
 
         $parsed = $lifetime !== ''
-            ? \DateTimeImmutable::createFromFormat('d.m.Y H:i:s', $lifetime, new \DateTimeZone('UTC'))
+            ? (\DateTimeImmutable::createFromFormat('!d.m.Y H:i:s', $lifetime, new \DateTimeZone('UTC'))
+                ?: \DateTimeImmutable::createFromFormat('!d.m.Y', $lifetime, new \DateTimeZone('UTC')))
             : false;
 
         if ($parsed !== false) {

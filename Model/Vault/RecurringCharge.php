@@ -74,6 +74,7 @@ class RecurringCharge
      * @param Config $config
      * @param PaymentTokenRepositoryInterface $tokenRepository
      * @param LoggerInterface $logger Bound to ShuboFlittLogger in di.xml.
+     * @param TokenMerchant $tokenMerchant
      */
     public function __construct(
         private readonly CheckoutPayloadBuilder $payloadBuilder,
@@ -85,6 +86,7 @@ class RecurringCharge
         private readonly Config $config,
         private readonly PaymentTokenRepositoryInterface $tokenRepository,
         private readonly LoggerInterface $logger,
+        private readonly TokenMerchant $tokenMerchant,
     ) {
     }
 
@@ -172,6 +174,14 @@ class RecurringCharge
 
         if ($rectoken === '') {
             throw new CommandException(__('The saved card could not be loaded. Please pay another way.'));
+        }
+
+        // Checkout hides cards of another merchant, but a public hash can
+        // still be posted directly: never send another merchant's token.
+        if (!$this->tokenMerchant->belongsToStore($token, (int)$payment->getOrder()->getStoreId())) {
+            throw new CommandException(
+                __('This saved card can no longer be used. Please pay another way and save the card again.')
+            );
         }
 
         return $rectoken;

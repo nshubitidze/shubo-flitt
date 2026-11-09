@@ -240,3 +240,23 @@ and `sender_email`.
 
 Why: every callback wrote the rectoken into the ledger whether or not the customer consented, and kept it — a
 chargeable credential (`/recurring` has no 3-D Secure) outside the vault, for customers who never asked to save a card.
+
+## A saved card belongs to the merchant that issued it
+
+`TokenPersister` records the issuing Flitt merchant (`merchantId` in the token details, from the signed status).
+`TokenMerchant` decides whether a card belongs to the store's merchant; a frontend plugin on core's
+`CustomerTokenManagement::getCustomerSessionTokens()` leaves other merchants' cards out of checkout and My Account,
+and `RecurringCharge` refuses one before calling Flitt. A card without a recorded merchant is treated as foreign.
+
+Why: a rectoken works only at its merchant. After switching from the test to the live merchant, every card saved
+during testing stayed listed and failed (error 1007); with customer accounts shared across websites, a card of
+one website's merchant was offered on another.
+
+## Saving the same card again reuses its vault row
+
+When the rectoken is already stored for the customer, `TokenPersister` updates that row (details, expiry, visible)
+and attaches it, instead of a new token.
+
+Why: core detects a duplicate card by a public hash that includes the token details, but the table is unique on
+method + customer + gateway token. Any change in the details (an expiry, the merchant id) made core insert a second
+row; the insert failed and the order save rolled back after the payment had been captured.

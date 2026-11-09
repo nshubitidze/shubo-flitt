@@ -79,3 +79,7 @@ Classic failures of Flitt checkout integrations; keep them impossible.
 15. Empty card area after paying, switching method and back → ready-while-paid asks the server.
 16. A decline seemed to do nothing (Flitt's popup opened below the visible area) → `showDecline()` message under
     the form.
+17. "Unique constraint violation" on `VAULT_PAYMENT_TOKEN_PAYMENT_METHOD_CODE_CSTR_ID_GATEWAY_TOKEN` after a paid
+    order (same card saved again with other details) → `TokenPersister` reuses the existing vault row.
+18. A saved card is missing at checkout → it was issued by another merchant (or before the merchant was recorded):
+    `TokenMerchant`; the customer saves it again.
