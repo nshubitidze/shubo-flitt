@@ -97,7 +97,10 @@ little gain.
 
 The order is identified from the signed return payload and the ledger; the
 session is only a fallback. The cross-site POST return is turned into a
-session-less redirect to the same route as GET (`ReturnSessionChecker`).
+session-less redirect to the same route as GET (`ReturnSessionChecker`). The
+redirect carries only a random one-time key; the POSTed fields wait in the
+cache — they include the payer's e-mail and, for logged-in customers, the
+rectoken, which must not land in URLs (web-server logs, browser history).
 
 Why: the cross-site POST carries no SameSite=Lax cookie; letting it start a
 session overwrote the customer's cookie and logged them out.

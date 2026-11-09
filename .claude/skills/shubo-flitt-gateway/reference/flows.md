@@ -80,8 +80,9 @@ the saved card (`TokenPersister`), ledger `settled`.
 - Flitt returns via a **cross-site POST**, which carries no SameSite=Lax session
   cookie. `ReturnSessionChecker` prevents a session from starting on that POST
   (a new guest cookie would log the customer out); the controller answers with a
-  session-less 302 to the same route as GET carrying the signed payload, and the
-  GET runs inside the customer's real session.
+  session-less 302 to the same route as GET carrying only a one-time key (`r`):
+  the POSTed fields wait in the cache for 10 min and are read once, then deleted.
+  The GET runs inside the customer's real session.
 - `ReturnHandler` identifies the payment: ① signed payload (ledger → secret →
   signature, the callback's trust chain) ② the session's own last order ③ else
   Unknown. The verdict comes from fresh order state under lock + signed status:
