@@ -1,0 +1,77 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Store:etc/config.xsd">
+    <default>
+        <payment>
+            <shubo_flitt>
+                <active>0</active>
+                <model>ShuboFlittFacade</model>
+                <title>TBC Bank</title>
+                <payment_action>authorize_capture</payment_action>
+                <checkout_type>embed</checkout_type>
+                <api_url>https://pay.flitt.com/api</api_url>
+                <api_timeout>30</api_timeout>
+                <lifetime>36000</lifetime>
+                <reconcile_grace>3600</reconcile_grace>
+                <allowed_currencies>GEL</allowed_currencies>
+                <!-- Wallet buttons in the embedded form. A Google Pay
+                     payment made with preauth=Y comes back as a hold and is
+                     captured like a card; HoldCapture decides from the signed
+                     capture_status and treats a wallet payment without one as
+                     a one-stage charge. Apple Pay additionally needs the
+                     domain verified with Flitt support before the button
+                     works. -->
+                <wallet_google_pay>0</wallet_google_pay>
+                <wallet_apple_pay>0</wallet_apple_pay>
+                <debug>0</debug>
+                <is_gateway>1</is_gateway>
+                <can_use_checkout>1</can_use_checkout>
+                <can_use_internal>0</can_use_internal>
+                <!-- can_authorize/can_capture gate the placement-verification
+                     commands: WITHOUT can_authorize=1 the Adapter silently skips
+                     the authorize command and places UNVERIFIED orders. -->
+                <can_authorize>1</can_authorize>
+                <can_capture>1</can_capture>
+                <can_capture_partial>0</can_capture_partial>
+                <!-- Money ops behind Magento's NATIVE admin buttons:
+                     online credit memo → RefundCommand, Void/Cancel of an open
+                     auth → VoidCommand. can_capture_partial stays 0 — Flitt
+                     allows a single capture per hold. -->
+                <can_refund>1</can_refund>
+                <can_void>1</can_void>
+                <can_cancel>1</can_cancel>
+                <can_refund_partial_per_invoice>1</can_refund_partial_per_invoice>
+                <!-- Vault: the saved-card method AND-gates these with
+                     the provider's can_authorize/can_capture (Vault::canAuthorize). -->
+                <can_authorize_vault>1</can_authorize_vault>
+                <can_capture_vault>1</can_capture_vault>
+                <sort_order>10</sort_order>
+            </shubo_flitt>
+            <!-- Saved cards: Magento_Vault method over Flitt rectokens.
+                 Placement charges server-side via /api/recurring (preauth=Y hold
+                 + capture, as for a card checkout); payment_action and all
+                 money capabilities delegate to the shubo_flitt provider. After
+                 placement Vault resets the order payment's method to the
+                 provider code, so callback/capture/refund/void ride the
+                 existing callback and money-op machinery unchanged. -->
+            <shubo_flitt_vault>
+                <model>ShuboFlittVaultFacade</model>
+                <title>Saved Cards (TBC Bank)</title>
+                <active>0</active>
+                <can_use_internal>0</can_use_internal>
+            </shubo_flitt_vault>
+        </payment>
+        <!-- Magento cancels "Pending Payment" orders after this many minutes
+             (core default 480). A redirect-mode order is pending while its
+             Flitt payment page can still be paid: lifetime 36000 s (10 h)
+             plus reconcile_grace 3600 s (1 h) = 660 min, after which the
+             module's own reconciler cancels it. A shorter value lets core
+             cancel orders that customers can still pay. A value saved in the
+             admin still wins; raise it together with a longer lifetime. -->
+        <sales>
+            <orders>
+                <delete_pending_after>660</delete_pending_after>
+            </orders>
+        </sales>
+    </default>
+</config>

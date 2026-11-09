@@ -1,0 +1,151 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+    <system>
+        <section id="payment">
+            <group id="shubo_flitt" translate="label comment" type="text" sortOrder="10"
+                   showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>TBC Bank (Flitt)</label>
+                <comment>Accept card payments via Flitt (TBC Bank): embedded card form in checkout
+                    or redirect to the Flitt payment page.</comment>
+
+                <field id="active" translate="label" type="select" sortOrder="10"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Enabled</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="title" translate="label comment" type="text" sortOrder="20"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Title</label>
+                    <comment>Payment method name shown to customers at checkout.</comment>
+                </field>
+
+                <field id="payment_action" translate="label comment" type="select" sortOrder="25"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Payment Action</label>
+                    <comment><![CDATA[<strong>Authorize &amp; Capture</strong>: the charge completes automatically the
+                        moment the order is placed — the invoice is created and paid.<br/>
+                        <strong>Authorize Only</strong>: reserve the funds now and capture later, when you create the
+                        invoice (Invoice &rarr; Capture Online).<br/>
+                        Both modes reserve first and charge second (two-stage card flow), so
+                        <strong>pre-authorization must be enabled on your Flitt merchant account</strong> — contact
+                        Flitt support if payments fail with "Preauth not allowed" (code 1027).]]></comment>
+                    <source_model>Shubo\Flitt\Model\Config\Source\PaymentAction</source_model>
+                </field>
+
+                <field id="merchant_id" translate="label comment" type="text" sortOrder="30"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Merchant ID</label>
+                    <comment>Merchant ID from your Flitt merchant portal.</comment>
+                    <validate>validate-digits</validate>
+                </field>
+
+                <field id="secret_key" translate="label comment" type="obscure" sortOrder="40"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Payment Secret Key</label>
+                    <comment>Payment secret key from your Flitt merchant portal. Stored encrypted.</comment>
+                    <backend_model>Magento\Config\Model\Config\Backend\Encrypted</backend_model>
+                </field>
+
+                <field id="order_id_prefix" translate="label comment" type="text" sortOrder="45"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Order ID Prefix</label>
+                    <comment>Short tag prepended to the order id sent to Flitt (e.g. shop1_000000123_1752480000).
+                        Set a different prefix per shop when several Magento instances share one Flitt merchant
+                        account; leave empty if this is the only shop on the account. Letters and digits only.</comment>
+                    <validate>validate-alphanum</validate>
+                </field>
+
+                <field id="checkout_type" translate="label comment" type="select" sortOrder="50"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Checkout Type</label>
+                    <comment><![CDATA[<strong>Embedded Card Form</strong>: the card form renders inside your
+                        checkout page — the customer never leaves the site.<br/>
+                        <strong>Redirect to Payment Page</strong>: the customer is redirected to the
+                        Flitt hosted payment page and returns after payment.]]></comment>
+                    <source_model>Shubo\Flitt\Model\Config\Source\CheckoutType</source_model>
+                </field>
+
+                <field id="wallet_google_pay" translate="label comment" type="select" sortOrder="51"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Google Pay (Embedded Form)</label>
+                    <comment><![CDATA[Show the Google Pay button in the embedded card form. Google Pay
+                        payments are held and captured like card payments. Applies to the embedded form only; the
+                        rails offered on the redirect payment page are managed in the Flitt merchant portal.]]></comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="wallet_apple_pay" translate="label comment" type="select" sortOrder="52"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Apple Pay (Embedded Form)</label>
+                    <comment><![CDATA[Show the Apple Pay button in the embedded card form (Safari/Apple devices
+                        only). <strong>Requires domain verification first:</strong> request the
+                        <em>apple-developer-merchantid-domain-association</em> file from Flitt support, serve it at
+                        <em>/.well-known/apple-developer-merchantid-domain-association</em> on every (sub)domain, and
+                        ask Flitt to activate the domain with Apple.]]></comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="vault_active" translate="label comment" type="select" sortOrder="53"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Saved Cards</label>
+                    <config_path>payment/shubo_flitt_vault/active</config_path>
+                    <comment><![CDATA[Let logged-in customers save their card during payment and pay with it in one
+                        click next time. Cards are stored at Flitt as tokens (rectoken) — no card data touches this
+                        server. <strong>Requires token payments to be enabled on your Flitt merchant account</strong> —
+                        contact Flitt support if saved-card payments fail with code 1059/1060. Saved-card charges
+                        cannot use 3D Secure; banks that require it will decline, and the customer is asked to pay
+                        with the normal card form instead.]]></comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="vault_title" translate="label comment" type="text" sortOrder="54"
+                       showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Saved Cards Title</label>
+                    <config_path>payment/shubo_flitt_vault/title</config_path>
+                    <comment>Name of the saved-cards payment option shown at checkout.</comment>
+                    <depends>
+                        <field id="vault_active">1</field>
+                    </depends>
+                </field>
+                <field id="allowed_currencies" translate="label comment" type="multiselect" sortOrder="55"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Allowed Currencies</label>
+                    <comment>Order currencies accepted through Flitt — the method is hidden at checkout
+                        for orders in any other currency. Georgian merchants can process GEL, USD and EUR.
+                        Select at least one.</comment>
+                    <source_model>Shubo\Flitt\Model\Config\Source\Currency</source_model>
+                </field>
+
+                <field id="lifetime" translate="label comment" type="text" sortOrder="56"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Order Lifetime (seconds)</label>
+                    <comment>How long an unpaid Flitt order stays payable before it expires.
+                        Default: 36000 (10 hours).</comment>
+                    <validate>validate-digits</validate>
+                </field>
+                <field id="reconcile_grace" translate="label comment" type="text" sortOrder="57"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Reconciler Grace (seconds)</label>
+                    <comment>How long the cleanup cron waits before acting on an unfinished
+                        payment session (cancelling expired pending orders, reversing orphaned
+                        holds). Must comfortably exceed how long a customer might take to resume
+                        an interrupted checkout. Default: 3600 (1 hour).</comment>
+                    <validate>validate-digits</validate>
+                </field>
+
+                <field id="debug" translate="label comment" type="select" sortOrder="60"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Debug Logging</label>
+                    <comment>Log full Flitt API request/response payloads to var/log/shubo_flitt.log.
+                        Request summaries and all errors are always logged there, regardless of this setting.</comment>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+
+                <field id="sort_order" translate="label" type="text" sortOrder="100"
+                       showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Sort Order</label>
+                    <validate>validate-digits</validate>
+                </field>
+            </group>
+        </section>
+    </system>
+</config>

@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<!-- CSP allowances for the Flitt embed on the (enforced) checkout pages.
+     script-src: checkout.js + lazy chunks; style-src/font-src: checkout.css +
+     per-chunk CSS + card/CVV masking fonts; frame-src: the SDK's hidden
+     postMessage gateway iframe (its actual API transport — load-bearing);
+     connect-src/img-src: widget requests and assets; form-action: 3DS.
+     Wallets: the widget's wallet chunk lazy-loads the Apple Pay SDK
+     from applepay.cdn-apple.com and the Google Pay client from
+     pay.google.com (button/iframe + gstatic assets) — allowed here
+     unconditionally; nothing loads until the admin wallet toggles are on. -->
+<csp_whitelist xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Csp:etc/csp_whitelist.xsd">
+    <policies>
+        <policy id="script-src">
+            <values>
+                <value id="flitt" type="host">https://pay.flitt.com</value>
+                <value id="applepay_cdn" type="host">https://applepay.cdn-apple.com</value>
+                <value id="google_pay" type="host">https://pay.google.com</value>
+            </values>
+        </policy>
+        <policy id="style-src">
+            <values>
+                <value id="flitt" type="host">https://pay.flitt.com</value>
+            </values>
+        </policy>
+        <policy id="font-src">
+            <values>
+                <value id="flitt" type="host">https://pay.flitt.com</value>
+            </values>
+        </policy>
+        <policy id="img-src">
+            <values>
+                <value id="flitt" type="host">https://pay.flitt.com</value>
+                <value id="google_pay" type="host">https://pay.google.com</value>
+                <value id="gstatic" type="host">https://www.gstatic.com</value>
+            </values>
+        </policy>
+        <policy id="connect-src">
+            <values>
+                <value id="flitt" type="host">https://pay.flitt.com</value>
+                <value id="google_pay" type="host">https://pay.google.com</value>
+            </values>
+        </policy>
+        <policy id="frame-src">
+            <values>
+                <value id="flitt" type="host">https://pay.flitt.com</value>
+                <value id="google_pay" type="host">https://pay.google.com</value>
+            </values>
+        </policy>
+        <policy id="form-action">
+            <values>
+                <value id="flitt" type="host">https://pay.flitt.com</value>
+            </values>
+        </policy>
+    </policies>
+</csp_whitelist>

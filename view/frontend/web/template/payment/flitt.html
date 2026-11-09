@@ -1,0 +1,85 @@
+<!-- Flitt payment method. The css binding on the root div is LOAD-BEARING:
+     evaluating isActive() is what drives the renderer's `active` observable
+     (and with it the embed mount) on both explicit selection and Magento's
+     silent preselection — see method-renderer/flitt.js. -->
+<div class="payment-method" data-bind="css: {'_active': isActive()}">
+    <div class="payment-method-title field choice">
+        <input type="radio"
+               name="payment[method]"
+               class="radio"
+               data-bind="attr: {'id': getCode()}, value: getCode(), checked: isChecked, click: selectPaymentMethod, visible: isRadioButtonVisible()"/>
+        <label data-bind="attr: {'for': getCode()}" class="label"><span data-bind="text: getTitle()"></span></label>
+    </div>
+    <div class="payment-method-content">
+        <!-- ko foreach: getRegion('messages') -->
+        <!-- ko template: getTemplate() --><!-- /ko -->
+        <!--/ko-->
+        <div class="payment-method-billing-address">
+            <!-- ko foreach: $parent.getRegion(getBillingAddressFormName()) -->
+            <!-- ko template: getTemplate() --><!-- /ko -->
+            <!--/ko-->
+        </div>
+        <!-- ko if: isEmbedMode() -->
+        <!-- data-state (idle, loading, ready, failed, paid, blocked) is for themes' CSS -->
+        <div class="shubo-flitt-embed-area" data-bind="attr: {'data-state': embedState()}">
+            <div class="shubo-flitt-loading" role="status" data-bind="visible: embedState() === 'loading'">
+                <span data-bind="i18n: 'Loading secure payment form...'"></span>
+            </div>
+            <div class="message error" role="alert" data-bind="visible: embedState() === 'failed'">
+                <div data-bind="text: embedError"></div>
+                <button type="button"
+                        class="action secondary"
+                        data-bind="click: retryEmbed">
+                    <span data-bind="i18n: 'Try again'"></span>
+                </button>
+            </div>
+            <div class="message success" role="status" data-bind="visible: embedState() === 'paid'">
+                <span data-bind="i18n: 'Your payment is confirmed. Click Place Order to finish your order.'"></span>
+            </div>
+            <div class="message error" role="alert" data-bind="visible: embedState() === 'blocked'">
+                <span data-bind="i18n: 'Your payment needs a manual review. Please contact us before paying again.'"></span>
+            </div>
+            <!-- hidden once paid: the widget's own receipt would show beside the messages above
+                 and under the place-order loader -->
+            <div id="shubo-flitt-embed" data-bind="visible: !paid()"></div>
+        </div>
+        <!-- /ko -->
+        <!-- ko ifnot: isEmbedMode() -->
+        <div class="shubo-flitt-redirect-note">
+            <span data-bind="i18n: 'After placing the order you will be redirected to the secure payment page to complete your payment.'"></span>
+        </div>
+        <!-- /ko -->
+        <!-- Saved cards: standard Magento_Vault consent. Renders only
+             for logged-in customers with the vault method active; the flag
+             rides placement additional_data and gates rectoken persistence. -->
+        <div class="field choice shubo-flitt-vault-consent" data-bind="visible: isVaultEnabled()">
+            <input type="checkbox"
+                   name="vault[is_enabled]"
+                   class="checkbox"
+                   data-bind="attr: {'id': getCode() + '_enable_vault'}, checked: vaultEnabler.isActivePaymentTokenEnabler"/>
+            <label class="label" data-bind="attr: {'for': getCode() + '_enable_vault'}">
+                <span data-bind="i18n: 'Save this card for faster checkout next time.'"></span>
+            </label>
+        </div>
+        <div class="checkout-agreements-block">
+            <!-- ko foreach: $parent.getRegion('before-place-order') -->
+            <!-- ko template: getTemplate() --><!-- /ko -->
+            <!--/ko-->
+        </div>
+        <div class="actions-toolbar">
+            <div class="primary">
+                <button class="action primary checkout"
+                        type="submit"
+                        data-bind="
+                        click: placeOrder,
+                        attr: {title: $t('Place Order')},
+                        css: {disabled: !isPlaceOrderActionAllowed()},
+                        enable: (getCode() == isChecked()) && embedState() !== 'blocked'
+                        "
+                        disabled>
+                    <span data-bind="i18n: 'Place Order'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

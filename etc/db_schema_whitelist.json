@@ -1,0 +1,36 @@
+{
+    "shubo_flitt_order": {
+        "column": {
+            "entity_id": true,
+            "flitt_order_id": true,
+            "store_id": true,
+            "quote_id": true,
+            "increment_id": true,
+            "amount": true,
+            "currency": true,
+            "lifetime": true,
+            "state": true,
+            "payment_id": true,
+            "order_status": true,
+            "response_code": true,
+            "masked_card": true,
+            "card_type": true,
+            "card_bin": true,
+            "rectoken": true,
+            "rectoken_lifetime": true,
+            "callback_count": true,
+            "last_callback_at": true,
+            "created_at": true,
+            "updated_at": true
+        },
+        "index": {
+            "SHUBO_FLITT_ORDER_INCREMENT_ID": true,
+            "SHUBO_FLITT_ORDER_QUOTE_ID": true,
+            "SHUBO_FLITT_ORDER_STATE_CREATED_AT": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "SHUBO_FLITT_ORDER_FLITT_ORDER_ID": true
+        }
+    }
+}

@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright © Shubo. All rights reserved.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    <!-- Global (not frontend/): standard checkout places orders in the
+         webapi_rest area. Fires post-commit. -->
+    <event name="checkout_submit_all_after">
+        <observer name="shubo_flitt_mark_ledger_settled" instance="Shubo\Flitt\Observer\MarkLedgerSettled"/>
+    </event>
+</config>
