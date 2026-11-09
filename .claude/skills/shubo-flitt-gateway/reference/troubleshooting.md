@@ -73,5 +73,9 @@ Classic failures of Flitt checkout integrations; keep them impossible.
 11. A second payment for one quote (reload after a total change, two tabs) → no new mint while a session is approved; older approved session = `blocked`.
 12. Pay right after a coupon paid the old amount or lost the card → `refreshing` holds payments until the token check answers.
 13. Wallet payment without a billing address → `canStartPayment()` gate; the `paid` message shows before placing.
+    Enter in a card field paid around all checks (the widget submits on `keyup`) → the Enter gate routes it through
+    `placeOrder()`.
 14. "Loading…" forever when a request never answers → one mount timer, AJAX timeouts.
 15. Empty card area after paying, switching method and back → ready-while-paid asks the server.
+16. A decline seemed to do nothing (Flitt's popup opened below the visible area) → `showDecline()` message under
+    the form.

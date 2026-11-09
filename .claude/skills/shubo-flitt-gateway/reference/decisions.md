@@ -195,6 +195,26 @@ the `paid` state before placing, so a placement that cannot start still tells th
 Why: a Google Pay tap with no billing address saved went through; core then refused to place without a message,
 and the customer was left with a paid card, no order and no explanation.
 
+## Enter in a card field goes through placeOrder()
+
+The widget submits its card form by itself on Enter (on `keyup`, in its own input handler). A capture-phase
+`keydown`/`keyup` listener on the container takes both key events of an Enter in an `<input>` before the widget sees
+them and calls `placeOrder()` on the `keydown` — so Enter runs the same checks as a Place Order click (validators,
+agreements, billing address, totals check) and then `submit()`s the widget. Other keys pass through.
+
+Why: Enter in the card form started a payment without any of those checks — with no billing address the customer
+paid, and the order could only be placed after saving one.
+
+## A decline is also shown under the form
+
+An `error` from the widget after `ready` is a payment decline: the same token stays payable, nothing is reset, and
+`showDecline()` puts "Your payment was declined: <Flitt's reason>" in its own message area under the card form
+(not Magento's message list, which hides itself after 5 s) and scrolls it into view. It clears on the next payment
+attempt (Place Order, Enter, an allowed wallet tap), on success and on remount.
+
+Why: the widget's own decline popup is laid out against the whole page, not the window — on a long checkout it
+opened below the visible area, and the customer saw nothing happen.
+
 ## One timer for the whole mount, timeouts on our AJAX calls
 
 The 30 s ready timer starts when mounting starts (script + token + ready), and the token and state requests time

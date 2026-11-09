@@ -70,3 +70,5 @@
 "Flitt saved-card payment requires an order payment.","Flitt-ის შენახული ბარათით გადახდას შეკვეთის გადახდა სჭირდება."
 "Enter and save your billing address before paying.","გთხოვთ, გადახდამდე შეიყვანოთ და შეინახოთ ანგარიშსწორების მისამართი."
 "This cart already has an approved payment.","ამ კალათისთვის გადახდა უკვე დადასტურებულია."
+"Your payment was declined: %1","გადახდა უარყოფილია: %1"
+"Your payment was declined. Check the card details or use another card.","გადახდა უარყოფილია. შეამოწმეთ ბარათის მონაცემები ან გამოიყენეთ სხვა ბარათი."

@@ -42,6 +42,8 @@
             <!-- hidden once paid: the widget's own receipt would show beside the messages above
                  and under the place-order loader -->
             <div id="shubo-flitt-embed" data-bind="visible: !paid()"></div>
+            <div class="message error shubo-flitt-decline" role="alert"
+                 data-bind="visible: declineMessage() !== '' && embedState() === 'ready', text: declineMessage"></div>
         </div>
         <!-- /ko -->
         <!-- ko ifnot: isEmbedMode() -->

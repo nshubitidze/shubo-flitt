@@ -125,6 +125,9 @@ define([
             // also exposed to CSS as data-state on the embed area.
             this.embedState = ko.observable('idle');
             this.embedError = ko.observable('');
+            // A declined payment, shown under the form until the next attempt:
+            // the widget's own decline popup can open outside the viewport.
+            this.declineMessage = ko.observable('');
 
             this._generation = 0;
             this._svc = null;
@@ -134,6 +137,7 @@ define([
             // repeated addEventListener calls are no-ops and teardown can
             // remove it).
             this._walletGate = this.onEmbedClickCapture.bind(this);
+            this._enterGate = this.onEmbedKeydownCapture.bind(this);
 
             // Saved cards: the standard Magento_Vault consent
             // checkbox. Rendering is driven by window.checkoutConfig.vault
@@ -300,6 +304,7 @@ define([
                 return false;
             }
 
+            this.declineMessage('');
             this._svc.submit();
 
             return false;
@@ -472,6 +477,7 @@ define([
 
             this.embedState('loading');
             this.embedError('');
+            this.declineMessage('');
             this.refreshing(false);
             this._totalsKey = this.totalsKey();
             this.ensureSdkCss();
@@ -528,6 +534,8 @@ define([
             // Same bound handler every time — re-adding is a spec'd no-op,
             // so remounts never stack gates.
             container.addEventListener('click', this._walletGate, true);
+            container.addEventListener('keydown', this._enterGate, true);
+            container.addEventListener('keyup', this._enterGate, true);
 
             this._svc = checkout(CONTAINER_SELECTOR, this.buildOptions(token));
             this._mountedToken = token;
@@ -568,6 +576,7 @@ define([
                 }
 
                 self.paid(true);
+                self.declineMessage('');
                 clearTimeout(self._totalsTimer);
                 self.refreshing(false);
                 // Shown at once: if the placement cannot start (core refuses
@@ -583,10 +592,13 @@ define([
                 }
 
                 if (self.embedState() === 'ready') {
-                    // Post-ready error = a payment decline. The widget shows
-                    // its own decline overlay and the same token stays
-                    // retryable (Flitt delayed=Y keeps the order in
-                    // 'processing') — nothing to reset on our side.
+                    // Post-ready error = a payment decline. The same token
+                    // stays retryable (Flitt delayed=Y keeps the order in
+                    // 'processing'), so nothing is reset. The widget's own
+                    // decline popup may open outside the viewport, so the
+                    // decline is also shown under the form.
+                    self.showDecline(model);
+
                     return;
                 }
 
@@ -780,6 +792,8 @@ define([
             }
 
             if (this.validate() && additionalValidators.validate() && this.canStartPayment()) {
+                this.declineMessage('');
+
                 return;
             }
 
@@ -788,6 +802,59 @@ define([
             // surfaced their messages exactly as a Place Order click would.
             event.preventDefault();
             event.stopPropagation();
+        },
+
+        /**
+         * Capture-phase gate for Enter in a card field: the widget submits its
+         * card form on Enter by itself (on keyup), which would start a payment
+         * without the checks placeOrder() runs first (agreements, billing
+         * address, totals check). Both key events of an Enter are taken over
+         * before the widget sees them; the keydown is routed through
+         * placeOrder(), exactly like a Place Order click.
+         *
+         * @param {KeyboardEvent} event
+         */
+        onEmbedKeydownCapture: function (event) {
+            const target = event.target;
+
+            if (event.key !== 'Enter' || event.isComposing || !target || target.tagName !== 'INPUT') {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (event.type === 'keydown') {
+                this.placeOrder();
+            }
+        },
+
+        /**
+         * Show a payment decline under the form and bring it into view. Flitt's
+         * reason (error.message, in the widget's language) follows our own
+         * sentence when the widget gives one.
+         *
+         * @param {Object} model The widget's error model.
+         */
+        showDecline: function (model) {
+            let reason = '';
+
+            if (model && typeof model.attr === 'function') {
+                reason = String(model.attr('error.message') || '');
+            }
+
+            this.declineMessage(reason !== ''
+                ? $t('Your payment was declined: %1').replace('%1', reason)
+                : $t('Your payment was declined. Check the card details or use another card.'));
+
+            const element = document.querySelector('.shubo-flitt-decline');
+
+            if (element && typeof element.scrollIntoView === 'function') {
+                // after Knockout made it visible
+                setTimeout(function () {
+                    element.scrollIntoView({block: 'nearest'});
+                }, 0);
+            }
         },
 
         /**
@@ -989,6 +1056,8 @@ define([
 
             if (container) {
                 container.removeEventListener('click', this._walletGate, true);
+                container.removeEventListener('keydown', this._enterGate, true);
+                container.removeEventListener('keyup', this._enterGate, true);
             }
 
             while (container && container.firstChild) {
@@ -997,6 +1066,7 @@ define([
 
             this.embedState('idle');
             this.embedError('');
+            this.declineMessage('');
             this.refreshing(false);
 
             // paid deliberately SURVIVES teardown: a re-mount against the

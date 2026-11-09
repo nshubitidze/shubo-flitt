@@ -156,6 +156,8 @@ then "void" is a refund.
   `shubo_flitt` tokens (core silently hides unclaimed ones).
 - **Wallets:** toggles add Google/Apple Pay to the embed. Wallet taps bypass
   `placeOrder`, so a capture-phase click gate runs Magento validators first;
-  success shares the card completion path. `HoldCapture` captures a wallet
+  success shares the card completion path. Enter in a card field (the widget
+  would submit on its own) is routed through `placeOrder` by a capture-phase
+  key gate. `HoldCapture` captures a wallet
   payment whose signed `capture_status` is `hold`, and skips the capture only
   when a wallet payment reports no `capture_status` (one-stage charge).
