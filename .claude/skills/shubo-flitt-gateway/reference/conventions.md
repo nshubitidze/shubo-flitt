@@ -64,6 +64,4 @@ How the module's code is written. New code follows the same rules.
   (`.github/workflows/checks.yml`): `setup:di:compile` in a fresh Magento
   2.4.9 with the module, phpstan from `phpstan.neon.dist` with only the
   packages `composer.json` requires (a missing dependency shows up there),
-  and the coding standard (errors fail, warnings are shown). Unit and
-  integration test jobs are off (`.github/check-extension.json`) until the
-  module has `Test/`.
+  and the coding standard (errors fail, warnings are shown).

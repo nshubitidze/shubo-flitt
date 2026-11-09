@@ -1,7 +1,10 @@
-# Checks on every pull request and on master: setup:di:compile in a fresh
-# Magento 2.4.9 with this module, phpstan (phpstan.neon.dist) and the Magento
-# coding standard (errors fail the check, warnings are shown). Magento is
-# installed from the Mage-OS mirror, so no repo.magento.com keys are needed.
+# Checks on every pull request and on master:
+# - compile:         setup:di:compile in a fresh Magento 2.4.9 (PHP 8.5) with this module
+# - phpstan:         level 2 with the Magento extension (phpstan.neon.dist), using only the
+#                    packages composer.json requires, so a missing dependency shows up here
+# - coding-standard: the Magento coding standard; errors fail, warnings are shown
+# Magento is installed from the Mage-OS mirror, so no repo.magento.com keys are needed.
+# The steps use graycoreio/github-actions-magento2 actions, pinned.
 name: Checks
 
 on:
@@ -13,23 +16,57 @@ on:
 permissions:
   contents: read
 
-jobs:
-  matrix:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.supported-version.outputs.matrix }}
-    steps:
-      - uses: graycoreio/github-actions-magento2/supported-version@v8.12.0
-        id: supported-version
-        with:
-          kind: custom
-          custom_versions: magento/project-community-edition:2.4.9
+env:
+  MAGENTO_VERSION: magento/project-community-edition:2.4.9
+  MAGENTO_REPOSITORY: https://mirror.mage-os.org/
+  PHP_VERSION: "8.5"
 
-  compile-and-phpstan:
-    needs: matrix
-    uses: graycoreio/github-actions-magento2/.github/workflows/check-extension.yaml@v8.12.0
-    with:
-      matrix: ${{ needs.matrix.outputs.matrix }}
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: graycoreio/github-actions-magento2/setup-magento@v8.12.0
+        id: setup-magento
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          tools: composer:v2
+          mode: extension
+          magento_version: ${{ env.MAGENTO_VERSION }}
+          magento_repository: ${{ env.MAGENTO_REPOSITORY }}
+
+      - name: Require this module from the checkout
+        working-directory: ${{ steps.setup-magento.outputs.path }}
+        run: |
+          composer config repositories.local path "${{ github.workspace }}"
+          composer require "$(jq -r .name "${{ github.workspace }}/composer.json"):@dev" --no-install
+          composer update --no-install
+
+      - name: Composer install
+        working-directory: ${{ steps.setup-magento.outputs.path }}
+        run: composer install
+        env:
+          COMPOSER_MIRROR_PATH_REPOS: 1
+
+      - uses: graycoreio/github-actions-magento2/setup-di-compile@v8.12.0
+        with:
+          path: ${{ steps.setup-magento.outputs.path }}
+
+  phpstan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          tools: composer:v2
+          coverage: none
+      - name: Composer install
+        run: composer install --no-interaction --no-progress
+      - uses: graycoreio/github-actions-magento2/phpstan@v8.12.0
+        with:
+          error_format: github
 
   coding-standard:
     runs-on: ubuntu-latest
@@ -37,7 +74,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.4"
+          php-version: ${{ env.PHP_VERSION }}
           tools: composer:v2
           coverage: none
       - uses: graycoreio/github-actions-magento2/coding-standard@v8.12.0
