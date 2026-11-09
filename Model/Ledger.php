@@ -62,8 +62,10 @@ class Ledger
     ];
 
     /**
-     * Callback-borne facts recordCallback() may write — includes the vault
-     * readiness set (rectoken/card metadata) captured from day one.
+     * Callback-borne facts recordCallback() may write. The rectoken itself is
+     * never stored here: it is a chargeable credential, kept only in the vault
+     * token when the customer asked to save the card (read from the signed
+     * status at settle).
      */
     private const array CALLBACK_FACT_COLUMNS = [
         'payment_id',
@@ -72,7 +74,6 @@ class Ledger
         'masked_card',
         'card_type',
         'card_bin',
-        'rectoken',
         'rectoken_lifetime',
     ];
 
@@ -171,8 +172,8 @@ class Ledger
      * Record the facts a (signature-verified) callback delivered.
      *
      * Null facts are skipped, never overwriting a previously recorded value
-     * with nothing (e.g. a retried early callback without a rectoken must
-     * not erase the token a later one carried). Bumps callback_count and
+     * with nothing (e.g. a retried early callback without card facts must
+     * not erase the facts a later one carried). Bumps callback_count and
      * last_callback_at regardless.
      *
      * @param string $flittOrderId

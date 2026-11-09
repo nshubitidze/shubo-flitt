@@ -57,7 +57,7 @@ Trust chain, strictly before any mutation: parse (JSON; legacy form-encoded
 fallback) → `order_id` → ledger row (unknown → **200 ignored**, no existence
 oracle) → store → secret (missing → 503) → **signature** (bad → 400) →
 merchant id (mismatch → 400) → `OrderLock` (busy → 503) → record facts
-(`payment_id`, status, card mask/type/bin, rectoken) → classify:
+(`payment_id`, status, card mask/type/bin — never the rectoken) → classify:
 
 | Flitt status / situation | Result |
 |---|---|
@@ -144,7 +144,7 @@ then "void" is a refund.
   `required_rectoken=Y`; the consent checkbox (unticked by default — core
   ticks it) decides **persistence** at
   settle (`TokenPersister` at both settle sites; token from the signed
-  envelope or the ledger's callback facts).
+  status only — the ledger never stores the rectoken).
 - **Pay:** the `shubo_flitt_vault` method → `vault_authorize`/`vault_sale` →
   `RecurringCharge`: `POST /recurring` with the rectoken and `preauth=Y`
   (synchronous SIGNED envelope is authoritative), then capture for

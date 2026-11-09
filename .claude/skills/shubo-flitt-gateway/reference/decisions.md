@@ -230,3 +230,13 @@ state endpoint instead of showing the form; the "already paid" warning shows onl
 card method. Place Order (embed) is active only in the `ready` and `paid` states.
 
 Why: the widget stayed hidden (paid) with no message — an empty card area.
+
+## Card tokens live only in the vault
+
+The ledger (`shubo_flitt_order`) does not store the `rectoken`; the column was dropped. A card token is kept only
+as the Magento vault token, created at settle from Flitt's signed status when the customer ticked "save this card"
+(unticked by default). Logs mask `rectoken`, `response_signature_string` (it lists every signed value in test mode)
+and `sender_email`.
+
+Why: every callback wrote the rectoken into the ledger whether or not the customer consented, and kept it — a
+chargeable credential (`/recurring` has no 3-D Secure) outside the vault, for customers who never asked to save a card.

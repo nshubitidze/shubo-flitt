@@ -43,8 +43,6 @@
                 comment="Card scheme"/>
         <column xsi:type="int" name="card_bin" unsigned="true" nullable="true"
                 comment="Card BIN"/>
-        <column xsi:type="varchar" name="rectoken" nullable="true" length="255"
-                comment="Recurring/vault card token (callback-borne)"/>
         <column xsi:type="varchar" name="rectoken_lifetime" nullable="true" length="32"
                 comment="Rectoken expiry as delivered"/>
         <column xsi:type="int" name="callback_count" unsigned="true" nullable="false" default="0"

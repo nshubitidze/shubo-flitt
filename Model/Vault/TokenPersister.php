@@ -10,8 +10,6 @@ use Magento\Sales\Model\Order\Payment;
 use Magento\Vault\Api\Data\PaymentTokenFactoryInterface;
 use Magento\Vault\Model\Ui\VaultConfigProvider;
 use Psr\Log\LoggerInterface;
-use Shubo\Flitt\Model\Checkout\TokenManager;
-use Shubo\Flitt\Model\Ledger;
 
 /**
  * Turns the rectoken facts of a settled payment into a Magento_Vault card
@@ -50,14 +48,12 @@ class TokenPersister
     /**
      * @param PaymentTokenFactoryInterface $tokenFactory
      * @param OrderPaymentExtensionInterfaceFactory $extensionFactory
-     * @param Ledger $ledger
      * @param Json $json
      * @param LoggerInterface $logger Bound to ShuboFlittLogger in di.xml.
      */
     public function __construct(
         private readonly PaymentTokenFactoryInterface $tokenFactory,
         private readonly OrderPaymentExtensionInterfaceFactory $extensionFactory,
-        private readonly Ledger $ledger,
         private readonly Json $json,
         private readonly LoggerInterface $logger,
     ) {
@@ -66,8 +62,8 @@ class TokenPersister
     /**
      * Attach a vault token to the payment when the customer asked for one.
      *
-     * Facts come from the verified signed envelope, with the ledger row
-     * (callback-borne facts) as fallback — whichever delivered the rectoken.
+     * Facts come from the verified signed envelope only (it carries rectoken
+     * and rectoken_lifetime); the ledger never stores the rectoken.
      *
      * @param Payment $payment
      * @param array<string, mixed> $status The verified signed status/order envelope.
@@ -86,14 +82,7 @@ class TokenPersister
                 return;
             }
 
-            $row = null;
             $rectoken = $this->fact($status, 'rectoken');
-
-            if ($rectoken === '') {
-                $flittOrderId = (string)$payment->getAdditionalInformation(TokenManager::INFO_ORDER_ID);
-                $row = $flittOrderId !== '' ? $this->ledger->find($flittOrderId) : null;
-                $rectoken = (string)($row['rectoken'] ?? '');
-            }
 
             if ($rectoken === '') {
                 // Consent given but no token issued (merchant account flag
@@ -107,10 +96,6 @@ class TokenPersister
             }
 
             $lifetime = $this->fact($status, 'rectoken_lifetime');
-
-            if ($lifetime === '' && $row !== null) {
-                $lifetime = (string)($row['rectoken_lifetime'] ?? '');
-            }
 
             $token = $this->tokenFactory->create(PaymentTokenFactoryInterface::TOKEN_TYPE_CREDIT_CARD);
             $token->setGatewayToken($rectoken);
