@@ -118,3 +118,51 @@ USD, EUR); the method is hidden for any other order currency.
 `{prefix}_{increment}_{unixtime}`: one Magento order may have several Flitt
 orders (re-mints), several shops may share one Flitt merchant (prefix), and
 the tail is bumped monotonically because Flitt rejects a repeated id (1013).
+
+## The card form's look comes from layout XML; the flow stays pinned
+
+Themes and other modules pass Flitt widget options through the layout-XML
+`widgetOptions` of the `shubo-flitt-payments` component (or a mixin on
+`getCustomWidgetOptions()`), merged under the module's pinned options. Keys
+that decide what is paid or how the payment starts are dropped.
+
+Why: layout XML is the one route both themes and modules have (a theme has
+no di.xml), it translates with `translate="true"`, and it needs no copy of
+the renderer or its template, so module updates keep working in styled
+stores. The payment flow (card only, Magento's Place Order as the single
+trigger, the minted token) was verified with these pins; a look change must
+not be able to alter it.
+
+## A failed SDK load is retried for real
+
+"Try again" after Flitt's `checkout.js` failed to load (network, ad blocker,
+Flitt down) loads it again: the errback marks the failure and `loadSdk()`
+calls `require.undef()` right before the next `require()`.
+
+Why: RequireJS caches a failed module, so every retry failed at once until a
+page reload. Undefining inside the errback itself leaves Magento's RequireJS
+resolver waiting for the failed module, so the page loader never stops.
+
+## Redirect mode keeps the page covered until Flitt's page loads
+
+`afterPlaceOrder()` starts the full-page loader again before
+`location.replace()`, as core's redirect-on-success does.
+
+Why: the place-order request stops the loader and re-enables Place Order as
+soon as it returns; until the hosted page loaded, the checkout showed again
+and could be clicked.
+
+## The widget is hidden once paid
+
+`#shubo-flitt-embed` is hidden while `paid` (success event, or a resumed paid
+session); the module's own messages and the place-order loader take over.
+
+Why: the widget's own receipt ("payment accepted", payment id) showed beside
+our "payment confirmed" message and under the place-order loader.
+
+## Numeric css_variable strings become numbers
+
+Layout XML hands every number over as a string. With
+`css_variable.border_radius: "6"` the widget never became ready and fired no
+error. The renderer converts numeric strings under `css_variable` only
+(colours stay strings); other options are passed as given.

@@ -20,11 +20,12 @@
             <!--/ko-->
         </div>
         <!-- ko if: isEmbedMode() -->
-        <div class="shubo-flitt-embed-area">
-            <div class="shubo-flitt-loading" data-bind="visible: embedState() === 'loading'">
+        <!-- data-state (idle, loading, ready, failed, paid, blocked) is for themes' CSS -->
+        <div class="shubo-flitt-embed-area" data-bind="attr: {'data-state': embedState()}">
+            <div class="shubo-flitt-loading" role="status" data-bind="visible: embedState() === 'loading'">
                 <span data-bind="i18n: 'Loading secure payment form...'"></span>
             </div>
-            <div class="message error" data-bind="visible: embedState() === 'failed'">
+            <div class="message error" role="alert" data-bind="visible: embedState() === 'failed'">
                 <div data-bind="text: embedError"></div>
                 <button type="button"
                         class="action secondary"
@@ -32,13 +33,15 @@
                     <span data-bind="i18n: 'Try again'"></span>
                 </button>
             </div>
-            <div class="message success" data-bind="visible: embedState() === 'paid'">
+            <div class="message success" role="status" data-bind="visible: embedState() === 'paid'">
                 <span data-bind="i18n: 'Your payment is confirmed. Click Place Order to finish your order.'"></span>
             </div>
-            <div class="message error" data-bind="visible: embedState() === 'blocked'">
+            <div class="message error" role="alert" data-bind="visible: embedState() === 'blocked'">
                 <span data-bind="i18n: 'Your payment needs a manual review. Please contact us before paying again.'"></span>
             </div>
-            <div id="shubo-flitt-embed"></div>
+            <!-- hidden once paid: the widget's own receipt would show beside the messages above
+                 and under the place-order loader -->
+            <div id="shubo-flitt-embed" data-bind="visible: !paid()"></div>
         </div>
         <!-- /ko -->
         <!-- ko ifnot: isEmbedMode() -->

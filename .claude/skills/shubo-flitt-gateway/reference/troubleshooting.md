@@ -24,6 +24,8 @@ reason from what the browser showed.
 | Callback 400 `invalid signature` | Wrong secret for the store, tampered body | Store-scoped secret in config; ledger store_id |
 | Callback 503 | Lock busy, missing secret, settle transient | Flitt retries automatically; check the error line |
 | New di.xml argument has no effect | Stale `generated/metadata` | `rm -rf generated/code/* generated/metadata/*`, recompile |
+| Card form stays on "Loading…" and fails after 30 s, no console error, only with custom widget options | An option value the widget cannot read (seen: `css_variable.border_radius` as the string "6" — the renderer now converts numeric `css_variable` strings) | Compare `buildOptions()` output in the browser with Flitt's docs; remove options one by one |
+| A widget option set in layout XML has no effect | It is a flow key (dropped: the browser console says `Shubo_Flitt: widget options ignored`), the jsLayout nesting is wrong, or Flitt wants a number and XML gave a string | Console warning; `require('uiRegistry').get('index = shubo-flitt-payments').widgetOptions` in the browser; set numbers in a `getCustomWidgetOptions()` mixin |
 | Saved card invisible in My Account | No renderer claims the token | `CardRenderer` + `vault_cards_listaction.xml` |
 | Google Pay / Apple Pay sheet opens but the payment is declined or fails | Domain not activated for the wallet (Flitt support: Apple domain-association file, Google domain registration); on the test merchant, Google's TEST card was declined with 1015 | Callback/log `response_code`; `additional_info.payment_method`; see `configuration.md` (wallet toggles) |
 
@@ -65,3 +67,5 @@ Classic failures of Flitt checkout integrations; keep them impossible.
 6. Wallet success left the user in checkout → single completion path.
 7. Dead admin "Capture" button → native Invoice → Capture Online only.
 8. Saved card in redirect mode: "A server error stopped your order from being placed" (core `Vault::initialize()` throws "Not implemented" because the vault method inherits the gateway's `can_initialize`) → `CanInitializeHandler` answers false for `shubo_flitt_vault` payments.
+9. "Try again" did nothing after Flitt's script failed to load (RequireJS cached the failure) → `loadSdk()` undefines a failed load before retrying.
+10. Redirect mode: the checkout showed again, clickable, until Flitt's page loaded → `afterPlaceOrder()` restarts the full-page loader.

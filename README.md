@@ -77,6 +77,49 @@ types cannot hold money first).
 - Log: `var/log/shubo_flitt.log`; one row per Flitt payment in the table
   `shubo_flitt_order`.
 
+## Customize the card form
+
+A theme (or another module) changes the look and texts of the embedded card
+form without copying the module's JavaScript or template: add `widgetOptions`
+to the module's payment component in its own `checkout_index_index.xml`
+(for a theme: `<theme>/Shubo_Flitt/layout/checkout_index_index.xml`). The
+values are Flitt's checkout-vue options (https://docs.flitt.com/):
+
+```xml
+<referenceBlock name="checkout.root">
+    <arguments>
+        <argument name="jsLayout" xsi:type="array">
+            <!-- components > checkout > children > steps > children > billing-step > children >
+                 payment > children > renders > children > (the same nesting as the module's file) -->
+            <item name="shubo-flitt-payments" xsi:type="array">
+                <item name="config" xsi:type="array">
+                    <item name="widgetOptions" xsi:type="array">
+                        <item name="options" xsi:type="array">
+                            <item name="theme" xsi:type="array">
+                                <item name="preset" xsi:type="string">reset</item>
+                                <item name="layout" xsi:type="string">plain</item>
+                            </item>
+                            <item name="show_title" xsi:type="boolean">false</item>
+                        </item>
+                        <item name="messages" xsi:type="array">
+                            <item name="en" xsi:type="array">
+                                <item name="card_number" xsi:type="string" translate="true">Card number</item>
+                            </item>
+                        </item>
+                    </item>
+                </item>
+            </item>
+        </argument>
+    </arguments>
+</referenceBlock>
+```
+
+Options that decide what is paid or how the payment starts (`params`, the
+payment methods, the pay button, `full_screen`, …) are ignored, with a
+warning in the browser console. The card form area carries `data-state`
+(`loading`, `ready`, `failed`, `paid`, `blocked`) for your CSS. Details:
+the module skill, `reference/changing.md`.
+
 ## Development
 
 Architecture, decisions, code conventions and how to change the module are

@@ -1,4 +1,8 @@
 <?xml version="1.0"?>
+<!-- A theme or module styles the embedded card form by adding config/widgetOptions to the
+     shubo-flitt-payments item below in its own checkout_index_index.xml: Flitt checkout-vue
+     options (options, messages, css_variable…; strings take translate="true"). Keys that
+     change the payment flow are ignored — see the method renderer's buildOptions(). -->
 <page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
       xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
     <body>

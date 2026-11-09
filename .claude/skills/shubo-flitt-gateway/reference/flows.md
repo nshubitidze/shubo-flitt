@@ -16,7 +16,8 @@ Amounts to Flitt are **minor units** (15.00 GEL → 1500). Flitt order ids are
 3. Customer clicks **Place Order** → Magento validators → widget `submit()`
    → Flitt payment (3DS overlay possible). A decline keeps the same token
    retryable (`delayed=Y`).
-4. Widget `success` → JS calls standard `placeOrder` (JS triggers only).
+4. Widget `success` → JS calls standard `placeOrder` (JS triggers only);
+   the widget is hidden from here on (`paid`).
 5. Server: placement runs the pool command —
    - `authorize_capture`: `CaptureStrategyCommand` → `VerifyChargeCommand` →
      `PaymentVerifier` (signed status: approved, binding, merchant, exact
@@ -35,7 +36,7 @@ after paying → ledger stays `approved` → reconciler places the order
 
 1. `can_initialize` is true → `InitializeCommand`: order `pending_payment`,
    confirmation email suppressed, `flitt_checkout_mode=redirect` stamped.
-2. JS `afterPlaceOrder` → `flitt/redirect/start` → `RedirectUrlManager`
+2. JS `afterPlaceOrder` (full-page loader on again) → `flitt/redirect/start` → `RedirectUrlManager`
    mints/reuses a hosted-page URL for the ORDER (ledger `minted`, URL cached on
    the order payment) under `OrderLock` → 302 to `pay.flitt.com`. Minting over
    an approved/settled session is refused (`PaymentInFlightException`).

@@ -15,6 +15,13 @@
  * - Handlers are bound ONCE at mount, never in click handlers (there is no
  *   $off; accumulated handlers place the order twice). Stale async
  *   continuations are fenced by a generation counter.
+ *
+ * Extension point: a theme or module passes the widget's look (theme,
+ * show_* flags, messages, css_variable…) through layout XML — the
+ * `widgetOptions` config of the `shubo-flitt-payments` component in
+ * checkout_index_index.xml — or by overriding getCustomWidgetOptions() in a
+ * mixin. Keys that would change the payment flow are dropped, and the
+ * module's pinned options always win (buildOptions()).
  */
 define([
     'jquery',
@@ -25,14 +32,51 @@ define([
     'Magento_Ui/js/model/messageList',
     'Magento_Checkout/js/view/payment/default',
     'Magento_Vault/js/view/payment/vault-enabler',
+    'Magento_Checkout/js/model/full-screen-loader',
+    'uiRegistry',
     'mage/cookies'
-], function ($, ko, $t, quote, additionalValidators, globalMessageList, Component, VaultEnabler) {
+], function (
+    $,
+    ko,
+    $t,
+    quote,
+    additionalValidators,
+    globalMessageList,
+    Component,
+    VaultEnabler,
+    fullScreenLoader,
+    registry
+) {
     'use strict';
 
     const CONTAINER_SELECTOR = '#shubo-flitt-embed';
     const SDK_CSS_URL = 'https://pay.flitt.com/latest/checkout-vue/checkout.css';
     const READY_TIMEOUT_MS = 30000;
     const GENERIC_LOAD_ERROR = $t('The payment form could not be loaded. Please try again.');
+    const SDK_MODULE = 'flittCheckout';
+
+    /**
+     * Widget option keys that decide WHAT is paid and HOW the payment is
+     * triggered. Custom options (layout XML / getCustomWidgetOptions()) may
+     * never set them: the module pins the ones it needs in buildOptions(),
+     * and the rest must keep the SDK defaults this flow was verified with.
+     * `params` (token, amount, order data) is dropped as a whole.
+     */
+    const FLOW_OPTION_KEYS = [
+        'methods', 'methods_disabled', 'wallet_methods_enabled', 'active_tab', 'active_method',
+        'full_screen', 'show_pay_button', 'autosubmit', 'disable_request', 'api_domain',
+        'endpoint', 'subscription', 'amount_readonly'
+    ];
+
+    /**
+     * RequireJS keeps a failed load in its registry: every later require()
+     * of the same module fails at once, without a new request. Set by the
+     * errback, cleared by undef() right before the next attempt — undefining
+     * inside the errback itself leaves Magento's RequireJS resolver waiting
+     * for the failed module, so the page loader never stops. Page-global,
+     * like the RequireJS registry it mirrors.
+     */
+    let sdkLoadFailed = false;
 
     /**
      * Wallet buttons render INSIDE the widget and are their own payment
@@ -51,6 +95,10 @@ define([
     return Component.extend({
         defaults: {
             template: 'Shubo_Flitt/payment/flitt',
+            // Component that carries the layout-XML `widgetOptions` (this
+            // module's checkout_index_index.xml): found by index, so a
+            // layout that moves the payment step does not break it.
+            widgetOptionsProvider: 'index = shubo-flitt-payments',
             active: false,
             imports: {
                 onActiveChange: 'active'
@@ -61,14 +109,15 @@ define([
          * @returns {Object} Chainable.
          */
         initObservable: function () {
-            this._super().observe(['active']);
+            this._super().observe(['active', 'paid']);
 
             // Redirect mode: placement succeeds into pending_payment and
             // afterPlaceOrder() navigates to the hosted-page handoff instead
             // of the default success-page redirect.
             this.redirectAfterPlaceOrder = this.isEmbedMode();
 
-            // 'idle' | 'loading' | 'ready' | 'failed'
+            // 'idle' | 'loading' | 'ready' | 'failed' | 'paid' | 'blocked' —
+            // also exposed to CSS as data-state on the embed area.
             this.embedState = ko.observable('idle');
             this.embedError = ko.observable('');
 
@@ -91,8 +140,10 @@ define([
             // One-shot completion latch: flips on the widget's success event,
             // after which placeOrder() routes to the REAL placement. Guards
             // against double-firing; the server is independently race-safe
-            // (CartMutex + inactive quote).
-            this._paid = false;
+            // (CartMutex + inactive quote). Observable because the template
+            // hides the widget once paid: its own receipt would otherwise
+            // show under the place-order loader and beside our paid message.
+            this.paid(false);
 
             // Totals watch: a coupon / shipping change invalidates the
             // minted amount server-side, and the widget cannot take a new
@@ -126,7 +177,7 @@ define([
             // placement-verification's problem (exact-amount check), not a
             // reason to orphan the PAID order by re-minting (the paid-state
             // resume flow owns the UX).
-            if (!this.isEmbedMode() || !this.active() || this._paid) {
+            if (!this.isEmbedMode() || !this.active() || this.paid()) {
                 return;
             }
 
@@ -169,7 +220,7 @@ define([
             }
 
             this.fetchToken().done(function (token) {
-                if (generation !== self._generation || self._paid) {
+                if (generation !== self._generation || self.paid()) {
                     return;
                 }
 
@@ -209,7 +260,7 @@ define([
                 return false;
             }
 
-            if (!this.isEmbedMode() || this._paid) {
+            if (!this.isEmbedMode() || this.paid()) {
                 return this._super(data, event);
             }
 
@@ -234,6 +285,11 @@ define([
          * Redirect mode only: the order is placed (pending_payment) — hand
          * the browser to the server-side hosted-page handoff. replace(), not
          * assign: Back must not land on the spent checkout step.
+         *
+         * The place-order request has already stopped the full-page loader
+         * and the button is re-enabled right after this returns, so until
+         * Flitt's page loads the checkout would show again, clickable. Start
+         * the loader again, as core's redirect-on-success does.
          */
         afterPlaceOrder: function () {
             if (this.isEmbedMode()) {
@@ -242,6 +298,7 @@ define([
                 return;
             }
 
+            fullScreenLoader.startLoader();
             window.location.replace(this.getFlittConfig().redirectUrl);
         },
 
@@ -438,11 +495,11 @@ define([
             // ignored: placement is verified server-side against Flitt's
             // signed status API, never from JS data.
             this._svc.$on('success', function () {
-                if (generation !== self._generation || self._paid) {
+                if (generation !== self._generation || self.paid()) {
                     return;
                 }
 
-                self._paid = true;
+                self.paid(true);
                 self.placeOrder();
             });
 
@@ -487,6 +544,93 @@ define([
         },
 
         /**
+         * The widget configuration: custom options (look, texts) under the
+         * module's pinned options, which always win.
+         *
+         * @param {String} token
+         * @returns {Object}
+         */
+        buildOptions: function (token) {
+            const custom = this.withNumericCssVariables(this.withoutFlowOptions(this.getCustomWidgetOptions()));
+
+            return $.extend(true, custom, this.getPinnedOptions(token));
+        },
+
+        /**
+         * Options from the theme or another module: the layout-XML
+         * `widgetOptions` of the shubo-flitt-payments component. Override
+         * this in a mixin for values that must be computed in the browser
+         * (call _super() and extend its result). Returns a copy.
+         *
+         * @returns {Object} Flitt checkout-vue configuration: options, messages, css_variable, button…
+         */
+        getCustomWidgetOptions: function () {
+            const provider = registry.get(this.widgetOptionsProvider);
+            const custom = provider && provider.widgetOptions;
+
+            return $.isPlainObject(custom) ? $.extend(true, {}, custom) : {};
+        },
+
+        /**
+         * Drop the keys that would change the payment flow (FLOW_OPTION_KEYS,
+         * `params`), with a console warning for the developer who set them.
+         *
+         * @param {Object} custom
+         * @returns {Object}
+         */
+        withoutFlowOptions: function (custom) {
+            const dropped = [];
+
+            if (Object.prototype.hasOwnProperty.call(custom, 'params')) {
+                delete custom.params;
+                dropped.push('params');
+            }
+
+            if ($.isPlainObject(custom.options)) {
+                FLOW_OPTION_KEYS.forEach(function (key) {
+                    if (Object.prototype.hasOwnProperty.call(custom.options, key)) {
+                        delete custom.options[key];
+                        dropped.push('options.' + key);
+                    }
+                });
+            }
+
+            if (dropped.length) {
+                // eslint-disable-next-line no-console
+                console.warn('Shubo_Flitt: widget options ignored (they would change the payment flow): ' +
+                    dropped.join(', '));
+            }
+
+            return custom;
+        },
+
+        /**
+         * Layout XML delivers every number as a string, and the widget never
+         * becomes ready (no error event either) when a css_variable size is
+         * one ("6" instead of 6) — the 30 s ready timer then reports a failed
+         * form. Numeric strings under css_variable become numbers; colours
+         * and other values stay as they are.
+         *
+         * @param {Object} custom
+         * @returns {Object}
+         */
+        withNumericCssVariables: function (custom) {
+            if (!$.isPlainObject(custom['css_variable'])) {
+                return custom;
+            }
+
+            Object.keys(custom['css_variable']).forEach(function (key) {
+                const value = custom['css_variable'][key];
+
+                if (typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value.trim())) {
+                    custom['css_variable'][key] = Number(value);
+                }
+            });
+
+            return custom;
+        },
+
+        /**
          * Pinned widget options. Every default that contradicts the flow is
          * overridden explicitly: the widget's own pay button is disabled
          * (Magento's Place Order stays the single, validator-gated trigger
@@ -498,7 +642,7 @@ define([
          * @param {String} token
          * @returns {Object}
          */
-        buildOptions: function (token) {
+        getPinnedOptions: function (token) {
             const wallets = this.enabledWallets();
 
             // methods:['card'] alone still renders a menu of every rail the
@@ -539,7 +683,7 @@ define([
          * @param {Event} event
          */
         onEmbedClickCapture: function (event) {
-            if (!this.enabledWallets().length || this._paid) {
+            if (!this.enabledWallets().length || this.paid()) {
                 return;
             }
 
@@ -577,19 +721,19 @@ define([
 
                 switch (response && response.state) {
                     case 'paid':
-                        self._paid = true;
+                        self.paid(true);
                         self.embedState('paid');
                         break;
 
                     case 'blocked':
-                        self._paid = true;
+                        self.paid(true);
                         self.embedState('blocked');
                         break;
 
                     case 'unpaid':
                     case 'none':
                         // Nothing actually paid — restart a fresh attempt.
-                        self._paid = false;
+                        self.paid(false);
                         self.retryEmbed();
                         break;
 
@@ -617,7 +761,7 @@ define([
          * @returns {void}
          */
         onPlacementFailed: function () {
-            if (!this.isEmbedMode() || !this._paid) {
+            if (!this.isEmbedMode() || !this.paid()) {
                 return;
             }
 
@@ -685,9 +829,17 @@ define([
         loadSdk: function () {
             const deferred = $.Deferred();
 
-            require(['flittCheckout'], function (checkout) {
+            // A failed earlier load (network, ad blocker, Flitt down) is
+            // cached by RequireJS: forget it so this attempt really loads.
+            if (sdkLoadFailed) {
+                require.undef(SDK_MODULE);
+                sdkLoadFailed = false;
+            }
+
+            require([SDK_MODULE], function (checkout) {
                 deferred.resolve(checkout);
             }, function () {
+                sdkLoadFailed = true;
                 deferred.reject();
             });
 
@@ -739,12 +891,12 @@ define([
             this.embedState('idle');
             this.embedError('');
 
-            // _paid deliberately SURVIVES teardown: a re-mount against the
+            // paid deliberately SURVIVES teardown: a re-mount against the
             // paid token errors with 2009 and resolves back into the paid /
             // blocked state (the resume path). Warn when the customer walks
             // away from a completed payment — placing an order with another
             // method now would collect the money twice.
-            if (this._paid) {
+            if (this.paid()) {
                 globalMessageList.addErrorMessage({
                     message: $t('You have already paid by card. Return to the card payment method to finish your order, or contact us.')
                 });

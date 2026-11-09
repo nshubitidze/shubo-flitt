@@ -54,6 +54,44 @@ string selector, handlers bound once per mount, generation-counter fencing,
 failure states with a retry path. A new external host goes into
 `etc/csp_whitelist.xml` (checkout CSP is enforced).
 
+## Style the embedded card form (theme or another module)
+
+No copy of the renderer or its template is needed for the form's look and
+texts:
+
+1. **Layout XML** (themes and modules): in the theme's
+   `Shubo_Flitt/layout/checkout_index_index.xml` (or a module's
+   `checkout_index_index.xml`), add `config` → `widgetOptions` to the jsLayout
+   item `shubo-flitt-payments` (same nesting as the module's own file; full
+   example in the README). The value is Flitt's checkout-vue configuration —
+   `options` (theme preset/layout, `show_*`, `card_icons`, …), `messages`
+   (keyed by Flitt locale), `css_variable`, … as documented by Flitt. Strings
+   take `translate="true"`; they are translated when the checkout layout is
+   built, so the phrase must be in a module's or language pack's `i18n` (a
+   theme's own CSV is not loaded yet when that theme is applied later, e.g.
+   as Hyvä's checkout fallback). An XML `number` arrives as a string: numeric
+   strings under `css_variable` are turned into numbers by the renderer
+   (`withNumericCssVariables()`) — the widget hangs on a string size; any
+   other number Flitt needs goes in through the JS route below.
+2. **Computed in the browser** (a module that needs JS): a mixin on the
+   renderer overriding `getCustomWidgetOptions()` — call `_super()` and
+   extend its result.
+3. **From PHP** (per store, from settings): a checkout layout processor that
+   writes the same `widgetOptions` into the jsLayout.
+
+`buildOptions()` = custom options with the flow keys removed
+(`withoutFlowOptions()`: `params` and `FLOW_OPTION_KEYS` in the renderer —
+methods, wallet rails, pay button, `full_screen`, `autosubmit`, endpoints,
+subscription…; one `console.warn` names what was dropped), then the
+module's pinned options on top. Adding a key to the flow list is a
+behaviour change: record it in `decisions.md`.
+
+For CSS, the embed area has `data-state` = the renderer's `embedState`
+(`idle`, `loading`, `ready`, `failed`, `paid`, `blocked`). The widget
+container `#shubo-flitt-embed` is hidden once paid. Markup changes still
+mean a theme copy of `payment/flitt.html`; keep every binding of the
+module's template in it.
+
 ## Verify a change
 
 - `phpcs` (Magento2 standard, 0 errors), `phpstan` level 2, and
