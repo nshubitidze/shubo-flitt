@@ -516,8 +516,9 @@ class PendingOrderReconciler
     }
 
     /**
-     * An order of the row's cart whose payment carries this Flitt session,
-     * whatever its increment id.
+     * The order of the row's cart that carries this Flitt session.
+     *
+     * Found whatever its increment id (a retry can get a new one).
      *
      * @param array<string, mixed> $row
      * @return Order|null

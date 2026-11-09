@@ -176,8 +176,9 @@ class Complete implements HttpGetActionInterface, HttpPostActionInterface, CsrfA
     }
 
     /**
-     * Keep the POSTed return fields (the signed envelope is flat, minus
-     * Magento's own form_key) in the cache under a random one-time key.
+     * Keep the POSTed return fields in the cache under a random one-time key.
+     *
+     * The signed envelope is flat; Magento's own form_key is left out.
      *
      * @return string The key for the GET leg.
      */

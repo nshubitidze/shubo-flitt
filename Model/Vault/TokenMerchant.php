@@ -36,8 +36,9 @@ class TokenMerchant
     }
 
     /**
-     * Whether a token may be shown or charged in this store. Tokens of other
-     * payment methods are not this class's business and always pass.
+     * Whether a token may be shown or charged in this store.
+     *
+     * Tokens of other payment methods are not this class's business and always pass.
      *
      * @param PaymentTokenInterface $token
      * @param int|null $storeId

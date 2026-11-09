@@ -27,6 +27,8 @@ class HideForeignMerchantTokens
     }
 
     /**
+     * Leave out Flitt cards issued by another merchant.
+     *
      * @param CustomerTokenManagement $subject
      * @param PaymentTokenInterface[] $result
      * @return PaymentTokenInterface[]
