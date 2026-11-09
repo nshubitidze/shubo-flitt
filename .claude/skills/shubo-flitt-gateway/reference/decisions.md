@@ -166,3 +166,47 @@ Layout XML hands every number over as a string. With
 `css_variable.border_radius: "6"` the widget never became ready and fired no
 error. The renderer converts numeric strings under `css_variable` only
 (colours stay strings); other options are passed as given.
+
+## Never a second payment for one quote
+
+A quote may carry several sessions (re-mints after totals or login changes, a second tab with an older form).
+The token endpoint refuses to mint while any of them is approved and not fully reversed, and the state endpoint
+reports such an older approved session as `blocked` (contact us), never `unpaid`. Flitt's signed status decides,
+not the ledger alone: the callback may arrive later than the next request.
+
+Why: paying, failing to place, changing the total and reloading — or paying in a second tab — minted a fresh
+session and offered a fresh form, and the customer could pay twice (seen with Flitt's test merchant: a 14.90 hold
+and a 13.90 capture for one order). The orphaned hold is the reconciler's to reverse.
+
+## Payments wait while the total is being re-checked
+
+A totals change sets `refreshing` at once; Place Order and wallet taps are refused until the token check answers
+(same token → go on; new token → the form is re-created for the new amount).
+
+Why: a click inside the 800 ms debounce paid the old amount, or the form was destroyed in the middle of its own
+submit and the typed card was lost without a message.
+
+## A payment starts only when the order can be placed right after it
+
+`canStartPayment()` (Place Order in embed mode and the wallet click gate) also requires Magento's
+`isPlaceOrderActionAllowed()` — a billing address — and says so if not. After a successful payment the form shows
+the `paid` state before placing, so a placement that cannot start still tells the customer what to do.
+
+Why: a Google Pay tap with no billing address saved went through; core then refused to place without a message,
+and the customer was left with a paid card, no order and no explanation.
+
+## One timer for the whole mount, timeouts on our AJAX calls
+
+The 30 s ready timer starts when mounting starts (script + token + ready), and the token and state requests time
+out after 45 s (above the server's Flitt API timeout).
+
+Why: Magento's RequireJS has no load timeout, and jQuery AJAX none by default — a request that never answered left
+"Loading…" on screen forever with no "Try again".
+
+## A fresh form while paid asks the server first
+
+When the widget becomes ready while `paid` is set (switch method and back, re-created form), the renderer asks the
+state endpoint instead of showing the form; the "already paid" warning shows only when the customer leaves the
+card method. Place Order (embed) is active only in the `ready` and `paid` states.
+
+Why: the widget stayed hidden (paid) with no message — an empty card area.

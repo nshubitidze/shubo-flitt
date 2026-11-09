@@ -20,6 +20,10 @@ use Shubo\Flitt\Model\Money;
  * exists yet) and folds the outcome into a coarse advice state instead of
  * exceptions. Placement itself always re-verifies through PaymentVerifier —
  * this resolver only drives UI decisions and can afford to be coarse.
+ *
+ * When the cached session is not paid, the quote's OTHER sessions are checked
+ * too (PaidSessionFinder): an approved older session — paid in a second tab,
+ * or before a totals change — makes the quote BLOCKED, never "safe to re-pay".
  */
 class PaymentStateResolver
 {
@@ -42,22 +46,61 @@ class PaymentStateResolver
      * @param FlittClient $client
      * @param Config $config
      * @param LoggerInterface $logger Bound to ShuboFlittLogger in di.xml.
+     * @param PaidSessionFinder $paidSessionFinder
      */
     public function __construct(
         private readonly FlittClient $client,
         private readonly Config $config,
         private readonly LoggerInterface $logger,
+        private readonly PaidSessionFinder $paidSessionFinder,
     ) {
     }
 
     /**
-     * Resolve the advice state for the quote's cached payment session.
+     * Resolve the advice state for the quote: its cached session, then any other approved session.
      *
      * @param Quote $quote
-     * @throws FlittApiException
      * @return string One of the STATE_* constants.
      */
     public function resolve(Quote $quote): string
+    {
+        $state = $this->resolveCached($quote);
+
+        if ($state !== self::STATE_NONE && $state !== self::STATE_UNPAID) {
+            return $state;
+        }
+
+        $cachedOrderId = (string)$quote->getPayment()->getAdditionalInformation(TokenManager::INFO_ORDER_ID);
+
+        try {
+            $other = $this->paidSessionFinder->findApproved($quote, $cachedOrderId);
+        } catch (FlittApiException $e) {
+            // FlittClient already logged the failure in detail.
+            return self::STATE_UNKNOWN;
+        }
+
+        if ($other === null) {
+            return $state;
+        }
+
+        $this->logger->error(sprintf(
+            'state: quote %d has an approved session %s that is not its current one (%s) — advising BLOCKED.'
+            . ' The reconciler reverses the hold if the quote is not placed with it.',
+            (int)$quote->getId(),
+            $other,
+            $cachedOrderId !== '' ? $cachedOrderId : 'none'
+        ));
+
+        return self::STATE_BLOCKED;
+    }
+
+    /**
+     * Classify the quote's cached payment session only.
+     *
+     * @param Quote $quote
+     * @return string One of the STATE_* constants.
+     */
+    private function resolveCached(Quote $quote): string
     {
         $payment = $quote->getPayment();
         $flittOrderId = (string)$payment->getAdditionalInformation(TokenManager::INFO_ORDER_ID);

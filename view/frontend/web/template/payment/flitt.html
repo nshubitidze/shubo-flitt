@@ -75,6 +75,7 @@
                         attr: {title: $t('Place Order')},
                         css: {disabled: !isPlaceOrderActionAllowed()},
                         enable: (getCode() == isChecked()) && embedState() !== 'blocked'
+                            && (!isEmbedMode() || ((embedState() === 'ready' || embedState() === 'paid') && !refreshing()))
                         "
                         disabled>
                     <span data-bind="i18n: 'Place Order'"></span>

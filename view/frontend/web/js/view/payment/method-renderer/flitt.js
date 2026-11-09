@@ -52,6 +52,9 @@ define([
     const CONTAINER_SELECTOR = '#shubo-flitt-embed';
     const SDK_CSS_URL = 'https://pay.flitt.com/latest/checkout-vue/checkout.css';
     const READY_TIMEOUT_MS = 30000;
+    // Above the server's own Flitt API timeout, so a slow but working mint is not cut off.
+    const AJAX_TIMEOUT_MS = 45000;
+    const HTTP_CONFLICT = 409;
     const GENERIC_LOAD_ERROR = $t('The payment form could not be loaded. Please try again.');
     const SDK_MODULE = 'flittCheckout';
 
@@ -109,7 +112,9 @@ define([
          * @returns {Object} Chainable.
          */
         initObservable: function () {
-            this._super().observe(['active', 'paid']);
+            // refreshing: the totals changed and the form's token is being checked —
+            // paying now could pay the old amount, so pay buttons wait for it.
+            this._super().observe(['active', 'paid', 'refreshing']);
 
             // Redirect mode: placement succeeds into pending_payment and
             // afterPlaceOrder() navigates to the hosted-page handoff instead
@@ -186,6 +191,7 @@ define([
             }
 
             clearTimeout(this._totalsTimer);
+            this.refreshing(true);
             this._totalsTimer = setTimeout(this.refreshEmbedToken.bind(this), 800);
         },
 
@@ -212,6 +218,12 @@ define([
             const self = this;
             const generation = this._generation;
 
+            if (this.paid()) {
+                this.refreshing(false);
+
+                return;
+            }
+
             if (this.embedState() === 'loading') {
                 // A mount is in flight against possibly-stale totals.
                 this.retryEmbed();
@@ -226,9 +238,21 @@ define([
 
                 if (token !== self._mountedToken) {
                     self.retryEmbed();
+
+                    return;
                 }
-            }).fail(function () {
+
+                self.refreshing(false);
+            }).fail(function (reason) {
                 if (generation !== self._generation) {
+                    return;
+                }
+
+                if (reason && reason.state) {
+                    // the quote already has an approved session: no new form
+                    self.teardownEmbed();
+                    self.applyPaymentState(reason.state, self._generation);
+
                     return;
                 }
 
@@ -268,7 +292,7 @@ define([
                 event.preventDefault();
             }
 
-            if (!this.validate() || !additionalValidators.validate()) {
+            if (!this.validate() || !additionalValidators.validate() || !this.canStartPayment()) {
                 return false;
             }
 
@@ -279,6 +303,31 @@ define([
             this._svc.submit();
 
             return false;
+        },
+
+        /**
+         * Whether a payment may start now, besides the validators: the order
+         * must be placeable right after it (Magento allows placing only with a
+         * billing address — a paid order that cannot be placed would leave the
+         * customer with no order and no message), and the form's token must
+         * not be under a totals check.
+         *
+         * @returns {Boolean}
+         */
+        canStartPayment: function () {
+            if (this.refreshing()) {
+                return false;
+            }
+
+            if (!this.isPlaceOrderActionAllowed()) {
+                this.messageContainer.addErrorMessage({
+                    message: $t('Enter and save your billing address before paying.')
+                });
+
+                return false;
+            }
+
+            return true;
         },
 
         /**
@@ -394,7 +443,7 @@ define([
          */
         onActiveChange: function (isActive) {
             if (!isActive) {
-                this.teardownEmbed();
+                this.teardownEmbed(true);
 
                 return;
             }
@@ -423,8 +472,14 @@ define([
 
             this.embedState('loading');
             this.embedError('');
+            this.refreshing(false);
             this._totalsKey = this.totalsKey();
             this.ensureSdkCss();
+            // One timer for the whole mount — script, token and the widget's
+            // ready event: a request that never answers (stalled connection;
+            // RequireJS has no load timeout in Magento) must end in the
+            // failed state with "Try again", not in an endless "Loading".
+            this.startReadyTimer(generation);
 
             $.when(this.loadSdk(), this.fetchToken()).done(function (checkout, token) {
                 if (generation !== self._generation) {
@@ -432,13 +487,22 @@ define([
                 }
 
                 self.mount(checkout, token, generation);
-            }).fail(function (message) {
+            }).fail(function (reason) {
                 if (generation !== self._generation) {
                     return;
                 }
 
+                self.clearReadyTimer();
+
+                if (reason && reason.state) {
+                    // the quote already has an approved session: no new form
+                    self.applyPaymentState(reason.state, generation);
+
+                    return;
+                }
+
                 self.embedState('failed');
-                self.embedError(typeof message === 'string' && message !== '' ? message : GENERIC_LOAD_ERROR);
+                self.embedError(typeof reason === 'string' && reason !== '' ? reason : GENERIC_LOAD_ERROR);
             });
         },
 
@@ -480,7 +544,11 @@ define([
                 // renders the widget's own success view — no error fires.
                 // Detect it from the ready payload and classify server-side;
                 // the payload itself is advisory only.
-                if (self.extractOrderStatus(model) === 'approved') {
+                // A fresh form while a payment is already approved (the
+                // customer switched method and back, or the form was
+                // re-created): never offer it — ask the server what the quote's
+                // payment state is.
+                if (self.extractOrderStatus(model) === 'approved' || self.paid()) {
                     self.resolvePaidState(generation);
 
                     return;
@@ -500,6 +568,12 @@ define([
                 }
 
                 self.paid(true);
+                clearTimeout(self._totalsTimer);
+                self.refreshing(false);
+                // Shown at once: if the placement cannot start (core refuses
+                // without a message), the customer still sees that the payment
+                // went through and that Place Order finishes the order.
+                self.embedState('paid');
                 self.placeOrder();
             });
 
@@ -533,8 +607,20 @@ define([
                 self.embedError(self.extractErrorMessage(model));
             });
 
+        },
+
+        /**
+         * Fail the mount after READY_TIMEOUT_MS unless the form became ready.
+         * A late ready event still recovers to 'ready'.
+         *
+         * @param {Number} generation
+         */
+        startReadyTimer: function (generation) {
+            const self = this;
+
+            this.clearReadyTimer();
             this._readyTimer = setTimeout(function () {
-                if (generation !== self._generation || self.embedState() === 'ready') {
+                if (generation !== self._generation || self.embedState() !== 'loading') {
                     return;
                 }
 
@@ -693,13 +779,13 @@ define([
                 return;
             }
 
-            if (this.validate() && additionalValidators.validate()) {
+            if (this.validate() && additionalValidators.validate() && this.canStartPayment()) {
                 return;
             }
 
             // Invalid checkout state: swallow the tap so the wallet sheet
-            // never opens; the validators above already surfaced their
-            // messages exactly as a Place Order click would.
+            // never opens; the validators above (and canStartPayment()) already
+            // surfaced their messages exactly as a Place Order click would.
             event.preventDefault();
             event.stopPropagation();
         },
@@ -719,28 +805,7 @@ define([
                     return;
                 }
 
-                switch (response && response.state) {
-                    case 'paid':
-                        self.paid(true);
-                        self.embedState('paid');
-                        break;
-
-                    case 'blocked':
-                        self.paid(true);
-                        self.embedState('blocked');
-                        break;
-
-                    case 'unpaid':
-                    case 'none':
-                        // Nothing actually paid — restart a fresh attempt.
-                        self.paid(false);
-                        self.retryEmbed();
-                        break;
-
-                    default:
-                        self.embedState('failed');
-                        self.embedError(GENERIC_LOAD_ERROR);
-                }
+                self.applyPaymentState(response && response.state, generation);
             }).fail(function () {
                 if (generation !== self._generation) {
                     return;
@@ -749,6 +814,41 @@ define([
                 self.embedState('failed');
                 self.embedError(GENERIC_LOAD_ERROR);
             });
+        },
+
+        /**
+         * Shape the form after the server's payment-state answer.
+         *
+         * @param {String} state paid | blocked | unpaid | none | unknown
+         * @param {Number} generation
+         */
+        applyPaymentState: function (state, generation) {
+            if (generation !== this._generation) {
+                return;
+            }
+
+            switch (state) {
+                case 'paid':
+                    this.paid(true);
+                    this.embedState('paid');
+                    break;
+
+                case 'blocked':
+                    this.paid(true);
+                    this.embedState('blocked');
+                    break;
+
+                case 'unpaid':
+                case 'none':
+                    // Nothing actually paid — restart a fresh attempt.
+                    this.paid(false);
+                    this.retryEmbed();
+                    break;
+
+                default:
+                    this.embedState('failed');
+                    this.embedError(GENERIC_LOAD_ERROR);
+            }
         },
 
         /**
@@ -785,6 +885,7 @@ define([
                 url: this.getFlittConfig().stateUrl,
                 type: 'POST',
                 dataType: 'json',
+                timeout: AJAX_TIMEOUT_MS,
                 data: {
                     'form_key': $.mage.cookies.get('form_key')
                 }
@@ -796,7 +897,7 @@ define([
          * X-Requested-With (passes CSRF); the form key rides along as the
          * documented alternative.
          *
-         * @returns {Promise} Resolves the token string, rejects a message.
+         * @returns {Promise} Resolves the token string; rejects a message, or {state} when already paid.
          */
         fetchToken: function () {
             const deferred = $.Deferred();
@@ -805,6 +906,7 @@ define([
                 url: this.getFlittConfig().tokenUrl,
                 type: 'POST',
                 dataType: 'json',
+                timeout: AJAX_TIMEOUT_MS,
                 data: {
                     'form_key': $.mage.cookies.get('form_key')
                 }
@@ -815,7 +917,10 @@ define([
                     deferred.reject();
                 }
             }).fail(function (xhr) {
-                deferred.reject(xhr.responseJSON && xhr.responseJSON.error);
+                const body = xhr.responseJSON || {};
+
+                // 409 = the quote already has an approved session: the state, not a new token
+                deferred.reject(xhr.status === HTTP_CONFLICT && body.state ? {state: body.state} : body.error);
             });
 
             return deferred.promise();
@@ -863,8 +968,10 @@ define([
 
         /**
          * Destroy the widget and invalidate all in-flight async work.
+         *
+         * @param {Boolean} [leavingMethod] The customer switched to another payment method.
          */
-        teardownEmbed: function () {
+        teardownEmbed: function (leavingMethod) {
             this._generation++;
             this.clearReadyTimer();
             clearTimeout(this._totalsTimer);
@@ -890,13 +997,14 @@ define([
 
             this.embedState('idle');
             this.embedError('');
+            this.refreshing(false);
 
             // paid deliberately SURVIVES teardown: a re-mount against the
             // paid token errors with 2009 and resolves back into the paid /
             // blocked state (the resume path). Warn when the customer walks
             // away from a completed payment — placing an order with another
             // method now would collect the money twice.
-            if (this.paid()) {
+            if (this.paid() && leavingMethod) {
                 globalMessageList.addErrorMessage({
                     message: $t('You have already paid by card. Return to the card payment method to finish your order, or contact us.')
                 });

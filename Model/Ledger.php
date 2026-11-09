@@ -146,6 +146,28 @@ class Ledger
     }
 
     /**
+     * The quote's sessions in one of $states, newest first (served by the quote_id index).
+     *
+     * @param int $quoteId
+     * @param string[] $states STATE_* constants.
+     * @param int $limit
+     * @return array<int, array<string, mixed>>
+     */
+    public function forQuote(int $quoteId, array $states, int $limit): array
+    {
+        $connection = $this->resource->getConnection();
+
+        return $connection->fetchAll(
+            $connection->select()
+                ->from($this->resource->getTableName(self::TABLE))
+                ->where('quote_id = ?', $quoteId)
+                ->where('state IN (?)', $states)
+                ->order('entity_id DESC')
+                ->limit($limit)
+        );
+    }
+
+    /**
      * Record the facts a (signature-verified) callback delivered.
      *
      * Null facts are skipped, never overwriting a previously recorded value

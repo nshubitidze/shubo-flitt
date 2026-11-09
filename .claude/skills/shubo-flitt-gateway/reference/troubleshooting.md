@@ -25,6 +25,7 @@ reason from what the browser showed.
 | Callback 503 | Lock busy, missing secret, settle transient | Flitt retries automatically; check the error line |
 | New di.xml argument has no effect | Stale `generated/metadata` | `rm -rf generated/code/* generated/metadata/*`, recompile |
 | Card form stays on "Loading…" and fails after 30 s, no console error, only with custom widget options | An option value the widget cannot read (seen: `css_variable.border_radius` as the string "6" — the renderer now converts numeric `css_variable` strings) | Compare `buildOptions()` output in the browser with Flitt's docs; remove options one by one |
+| Card form shows "Your payment needs a manual review" (blocked) right after a totals change or in a second tab | Another session of the quote is approved (`PaidSessionFinder`, log line "session … is approved") | Expected: no second payment. The reconciler reverses the orphaned hold after the grace time if the quote is not placed with it |
 | A widget option set in layout XML has no effect | It is a flow key (dropped: the browser console says `Shubo_Flitt: widget options ignored`), the jsLayout nesting is wrong, or Flitt wants a number and XML gave a string | Console warning; `require('uiRegistry').get('index = shubo-flitt-payments').widgetOptions` in the browser; set numbers in a `getCustomWidgetOptions()` mixin |
 | Saved card invisible in My Account | No renderer claims the token | `CardRenderer` + `vault_cards_listaction.xml` |
 | Google Pay / Apple Pay sheet opens but the payment is declined or fails | Domain not activated for the wallet (Flitt support: Apple domain-association file, Google domain registration); on the test merchant, Google's TEST card was declined with 1015 | Callback/log `response_code`; `additional_info.payment_method`; see `configuration.md` (wallet toggles) |
@@ -69,3 +70,8 @@ Classic failures of Flitt checkout integrations; keep them impossible.
 8. Saved card in redirect mode: "A server error stopped your order from being placed" (core `Vault::initialize()` throws "Not implemented" because the vault method inherits the gateway's `can_initialize`) → `CanInitializeHandler` answers false for `shubo_flitt_vault` payments.
 9. "Try again" did nothing after Flitt's script failed to load (RequireJS cached the failure) → `loadSdk()` undefines a failed load before retrying.
 10. Redirect mode: the checkout showed again, clickable, until Flitt's page loaded → `afterPlaceOrder()` restarts the full-page loader.
+11. A second payment for one quote (reload after a total change, two tabs) → no new mint while a session is approved; older approved session = `blocked`.
+12. Pay right after a coupon paid the old amount or lost the card → `refreshing` holds payments until the token check answers.
+13. Wallet payment without a billing address → `canStartPayment()` gate; the `paid` message shows before placing.
+14. "Loading…" forever when a request never answers → one mount timer, AJAX timeouts.
+15. Empty card area after paying, switching method and back → ready-while-paid asks the server.
