@@ -97,9 +97,23 @@ class TokenPersister
 
             $lifetime = $this->fact($status, 'rectoken_lifetime');
 
+            $expiresAt = $this->expiresAt($lifetime);
+
+            if ($expiresAt === null) {
+                // A token Flitt dates in the past, or with a date we cannot
+                // read, is not stored: it would be offered and then decline.
+                $this->logger->warning(sprintf(
+                    'vault: order %s card not saved — unusable rectoken_lifetime "%s"',
+                    $order->getIncrementId(),
+                    $lifetime
+                ));
+
+                return;
+            }
+
             $token = $this->tokenFactory->create(PaymentTokenFactoryInterface::TOKEN_TYPE_CREDIT_CARD);
             $token->setGatewayToken($rectoken);
-            $token->setExpiresAt($this->expiresAt($lifetime));
+            $token->setExpiresAt($expiresAt);
             $token->setTokenDetails($this->json->serialize($this->details($status, $lifetime)));
 
             $extensionAttributes = $payment->getExtensionAttributes() ?? $this->extensionFactory->create();
@@ -137,22 +151,27 @@ class TokenPersister
     /**
      * Vault expiry timestamp from Flitt's rectoken_lifetime ("dd.mm.yyyy
      * HH:MM:SS", same shape as order_time), or the default lifetime when
-     * absent/unparseable. Magento hides tokens past expires_at.
+     * Flitt sends none. Magento hides tokens past expires_at.
      *
      * @param string $lifetime
-     * @return string UTC 'Y-m-d H:i:s'.
+     * @return string|null UTC 'Y-m-d H:i:s'; null when the lifetime is
+     *     unreadable or already past (the token must not be stored).
      */
-    private function expiresAt(string $lifetime): string
+    private function expiresAt(string $lifetime): ?string
     {
-        if ($lifetime !== '') {
-            $parsed = \DateTimeImmutable::createFromFormat('d.m.Y H:i:s', $lifetime, new \DateTimeZone('UTC'));
-
-            if ($parsed !== false && $parsed->getTimestamp() > time()) {
-                return $parsed->format('Y-m-d H:i:s');
-            }
+        if ($lifetime === '') {
+            return (new \DateTimeImmutable(self::DEFAULT_LIFETIME, new \DateTimeZone('UTC')))->format('Y-m-d H:i:s');
         }
 
-        return (new \DateTimeImmutable(self::DEFAULT_LIFETIME, new \DateTimeZone('UTC')))->format('Y-m-d H:i:s');
+        $utc = new \DateTimeZone('UTC');
+        $parsed = \DateTimeImmutable::createFromFormat('!d.m.Y H:i:s', $lifetime, $utc)
+            ?: \DateTimeImmutable::createFromFormat('!d.m.Y', $lifetime, $utc);
+
+        if ($parsed === false || $parsed->getTimestamp() <= time()) {
+            return null;
+        }
+
+        return $parsed->format('Y-m-d H:i:s');
     }
 
     /**
