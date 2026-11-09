@@ -286,3 +286,13 @@ ended is closed in the ledger and a new charge goes out.
 Why: every attempt minted a new order id. When `/recurring` was approved but the capture after it failed or timed
 out — or `/recurring` itself timed out — placement failed and the customer's retry charged the saved card a second
 time.
+
+## A wallet charge is called one-stage only on a fresh signed status
+
+When the envelope at hand shows a wallet payment without `capture_status`, `HoldCapture` reads the signed status
+once more and decides on that: a `hold` is captured; still no `capture_status` → one-stage charge, logged as a
+warning to check.
+
+Why: skipping the capture of a payment that is really a hold lets it lapse while the order ships as paid, and the
+envelopes passed in can be partial (the synchronous `/recurring` answer, a callback). Whether Apple Pay or a live
+merchant's wallet payment can be one-stage at all is an open question for Flitt.
