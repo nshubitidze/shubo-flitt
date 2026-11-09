@@ -145,6 +145,9 @@ define([
             // is a no-op otherwise.
             this.vaultEnabler = new VaultEnabler();
             this.vaultEnabler.setPaymentCode(this.getFlittConfig().vaultCode);
+            // Core ticks the box by default; saving a card is the customer's
+            // explicit choice, so it starts unticked.
+            this.vaultEnabler.isActivePaymentTokenEnabler(false);
 
             // One-shot completion latch: flips on the widget's success event,
             // after which placeOrder() routes to the REAL placement. Guards

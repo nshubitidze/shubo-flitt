@@ -141,7 +141,8 @@ then "void" is a refund.
 ## 7. Saved cards (Magento_Vault) and wallets
 
 - **Issue:** logged-in customer + vault active → every mint sends
-  `required_rectoken=Y`; the consent checkbox decides **persistence** at
+  `required_rectoken=Y`; the consent checkbox (unticked by default — core
+  ticks it) decides **persistence** at
   settle (`TokenPersister` at both settle sites; token from the signed
   envelope or the ledger's callback facts).
 - **Pay:** the `shubo_flitt_vault` method → `vault_authorize`/`vault_sale` →
