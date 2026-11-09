@@ -60,3 +60,8 @@ How the module's code is written. New code follows the same rules.
 - `phpcs --standard=Magento2` (0 errors; no new warnings),
   `phpstan` level 2 with `bitexpert/phpstan-magento`, and
   `bin/magento setup:di:compile` after clearing `generated/`.
+- The same checks run on every pull request and on `master`
+  (`.github/workflows/checks.yml`): `setup:di:compile` in a fresh Magento
+  2.4.9 with the module, phpstan from `phpstan.neon.dist` with only the
+  packages `composer.json` requires (a missing dependency shows up there),
+  and the coding standard (errors fail, warnings are shown).
