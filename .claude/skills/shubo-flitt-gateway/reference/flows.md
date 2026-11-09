@@ -108,13 +108,18 @@ Per ledger row, under `OrderLock`, decided on the signed status, batch cap 50:
   answers "Order not found" (1018 — it never created the session, e.g.
   after the merchant account was switched) → `expired` + cancel too, so the
   row is not polled forever.
-- **Parked holds** (`approved` idle past grace): matching pending order →
+- **Parked holds** (`approved` idle past grace): the order is found by the
+  reserved increment id, or by the cart (`quote_id`) when it carries this
+  session; matching pending order →
   settle; placed order but observer missed → mark settled; paid embed session
   with no order → `PaidQuotePlacer` places it (same quote, same reserved
   increment, exact money match; a guest quote first gets the customer
   fields core's `placeOrder()` would set — e-mail from the billing address —
   and the confirmation e-mail is sent, because core sends it only in the
-  storefront/web API areas); otherwise → **reverse in full**
+  storefront/web API areas). A cart that is already inactive: placed another
+  way (another method, another session, a new increment id) → reverse; no
+  order and unchanged for 15 min (a crashed submit) → reverse; changed in the
+  last 15 min → wait (placement in flight). Otherwise → **reverse in full**
   (`reverse_id rec-{increment}`), ledger `reversed`.
 
 Core's `sales_clean_orders` cron cancels `pending_payment` orders after

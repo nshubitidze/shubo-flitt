@@ -260,3 +260,14 @@ and attaches it, instead of a new token.
 Why: core detects a duplicate card by a public hash that includes the token details, but the table is unique on
 method + customer + gateway token. Any change in the details (an expiry, the merchant id) made core insert a second
 row; the insert failed and the order save rolled back after the payment had been captured.
+
+## An inactive cart does not hold a payment back forever
+
+When a parked payment's cart is already inactive, `PaidQuotePlacer` returns the money unless a placement could still
+be running: if the cart has an order (any method, any increment id) the payment is not part of it; with no order, the
+cart is waited for only 15 minutes after its last change. The reconciler also finds the session's own order by cart,
+so a retry under a new increment id is settled, not reversed.
+
+Why: "inactive cart, no order with the reserved increment id" was always read as "placement in flight" — a customer
+who paid by card, saw the placement fail and finished with another method left the card payment unreleased until
+core deleted the cart (30 days), and enough such rows blocked the reconciler's batch.

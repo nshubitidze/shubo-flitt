@@ -260,7 +260,10 @@ class PendingOrderReconciler
     private function handleParkedHold(array $row): void
     {
         $flittOrderId = (string)$row['flitt_order_id'];
-        $order = $this->boundOrder($row);
+        // By reserved increment id first; a retried placement can get a new
+        // increment id, so also look for an order of the same cart that
+        // carries this session.
+        $order = $this->boundOrder($row) ?? $this->sessionOrderOfQuote($row);
         $payment = $order?->getPayment();
         $sameSession = $payment instanceof Payment
             && (string)$payment->getAdditionalInformation(TokenManager::INFO_ORDER_ID) === $flittOrderId;
@@ -510,6 +513,41 @@ class PendingOrderReconciler
         }
 
         return $status;
+    }
+
+    /**
+     * An order of the row's cart whose payment carries this Flitt session,
+     * whatever its increment id.
+     *
+     * @param array<string, mixed> $row
+     * @return Order|null
+     */
+    private function sessionOrderOfQuote(array $row): ?Order
+    {
+        $quoteId = (int)($row['quote_id'] ?? 0);
+
+        if ($quoteId === 0) {
+            return null;
+        }
+
+        $orders = $this->orderRepository->getList(
+            $this->searchCriteriaBuilder->addFilter('quote_id', $quoteId)->create()
+        )->getItems();
+
+        foreach ($orders as $order) {
+            $payment = $order->getPayment();
+
+            if ($order instanceof Order
+                && $payment instanceof Payment
+                && $payment->getMethod() === ConfigProvider::CODE
+                && (string)$payment->getAdditionalInformation(TokenManager::INFO_ORDER_ID)
+                    === (string)$row['flitt_order_id']
+            ) {
+                return $order;
+            }
+        }
+
+        return null;
     }
 
     /**
