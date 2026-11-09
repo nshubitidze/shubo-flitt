@@ -1,0 +1,46 @@
+# Checks on every pull request and on master: setup:di:compile in a fresh
+# Magento 2.4.9 with this module, phpstan (phpstan.neon.dist) and the Magento
+# coding standard (errors fail the check, warnings are shown). Magento is
+# installed from the Mage-OS mirror, so no repo.magento.com keys are needed.
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.supported-version.outputs.matrix }}
+    steps:
+      - uses: graycoreio/github-actions-magento2/supported-version@v8.12.0
+        id: supported-version
+        with:
+          kind: custom
+          custom_versions: magento/project-community-edition:2.4.9
+
+  compile-and-phpstan:
+    needs: matrix
+    uses: graycoreio/github-actions-magento2/.github/workflows/check-extension.yaml@v8.12.0
+    with:
+      matrix: ${{ needs.matrix.outputs.matrix }}
+
+  coding-standard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          tools: composer:v2
+          coverage: none
+      - uses: graycoreio/github-actions-magento2/coding-standard@v8.12.0
+        with:
+          path: .
+          ignore_warnings: "true"

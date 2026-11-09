@@ -1,0 +1,12 @@
+# Static analysis as in the CI checks (.github/workflows/checks.yml): level 2
+# with the Magento extension, which knows generated factories and proxies.
+includes:
+    - vendor/bitexpert/phpstan-magento/extension.neon
+
+parameters:
+    level: 2
+    paths:
+        - .
+    excludePaths:
+        - vendor/*
+        - Test/*
