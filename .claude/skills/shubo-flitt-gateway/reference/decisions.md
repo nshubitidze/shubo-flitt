@@ -155,13 +155,20 @@ Why: the place-order request stops the loader and re-enables Place Order as
 soon as it returns; until the hosted page loaded, the checkout showed again
 and could be clicked.
 
-## The widget is hidden once paid
+## The widget is hidden once paid or failed
 
 `#shubo-flitt-embed` is hidden while `paid` (success event, or a resumed paid
-session); the module's own messages and the place-order loader take over.
+session) and while the form state is `failed`; the module's own messages and
+the place-order loader take over. "Try again" (and a late `ready`) leaves
+`failed`, so the box shows again for the new form.
 
 Why: the widget's own receipt ("payment accepted", payment id) showed beside
-our "payment confirmed" message and under the place-order loader.
+our "payment confirmed" message and under the place-order loader. A widget
+that errors before `ready` (e.g. Flitt rejects the session: 2006 "Order
+lifetime has expired") leaves its half-built form (amount 0.00, empty card
+fields) and its own "Declined" popup inside the box, beside our failed
+message and "Try again"; the popup is inside the box, so hiding the box hides
+it too. Our message already carries the widget's error text.
 
 ## Numeric css_variable strings become numbers
 

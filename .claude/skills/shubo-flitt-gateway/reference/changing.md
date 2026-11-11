@@ -88,7 +88,8 @@ behaviour change: record it in `decisions.md`.
 
 For CSS, the embed area has `data-state` = the renderer's `embedState`
 (`idle`, `loading`, `ready`, `failed`, `paid`, `blocked`). The widget
-container `#shubo-flitt-embed` is hidden once paid. Markup changes still
+container `#shubo-flitt-embed` is hidden once paid and while `failed` (a
+theme needs no CSS for that). Markup changes still
 mean a theme copy of `payment/flitt.html`; keep every binding of the
 module's template in it.
 
