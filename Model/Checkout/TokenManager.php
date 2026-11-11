@@ -7,6 +7,7 @@ namespace Shubo\Flitt\Model\Checkout;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Quote\Model\Quote;
 use Shubo\Flitt\Exception\FlittApiException;
+use Shubo\Flitt\Exception\PaymentInFlightException;
 use Shubo\Flitt\Model\Callback\CallbackUrl;
 use Shubo\Flitt\Model\CheckoutPayloadBuilder;
 use Shubo\Flitt\Model\FlittClient;
@@ -25,6 +26,11 @@ use Shubo\Flitt\Model\Ledger;
  * resolves the payment by; every mint is also recorded in the Ledger,
  * which is what the callback and the reconciler
  * resolve it by after the quote is gone.
+ *
+ * A new session is never minted while another session of the quote is
+ * approved (PaidSessionFinder): the customer would be offered a second
+ * payment — after a placement failure and a totals change, or from a second
+ * tab still showing an older form.
  */
 class TokenManager
 {
@@ -46,6 +52,7 @@ class TokenManager
      * @param CallbackUrl $callbackUrl
      * @param Ledger $ledger
      * @param MintPolicy $mintPolicy
+     * @param PaidSessionFinder $paidSessionFinder
      */
     public function __construct(
         private readonly CheckoutPayloadBuilder $payloadBuilder,
@@ -54,6 +61,7 @@ class TokenManager
         private readonly CallbackUrl $callbackUrl,
         private readonly Ledger $ledger,
         private readonly MintPolicy $mintPolicy,
+        private readonly PaidSessionFinder $paidSessionFinder,
     ) {
     }
 
@@ -66,6 +74,7 @@ class TokenManager
      * @param Quote $quote
      * @return array{token: string, order_id: string}
      * @throws FlittApiException
+     * @throws PaymentInFlightException When another session of the quote is already approved.
      * @throws \InvalidArgumentException When the quote cannot be paid (no positive total,
      *     currency not enabled).
      */
@@ -91,6 +100,11 @@ class TokenManager
                 'token' => $cachedToken,
                 'order_id' => (string)$payment->getAdditionalInformation(self::INFO_ORDER_ID),
             ];
+        }
+
+        // The cached session included: its amount may no longer match, yet it may be the one already paid.
+        if ($this->paidSessionFinder->findApproved($quote) !== null) {
+            throw new PaymentInFlightException(__('This cart already has an approved payment.'));
         }
 
         // Re-mints must never reuse a previous flitt order_id (e.g. an

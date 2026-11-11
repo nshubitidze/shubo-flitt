@@ -33,7 +33,7 @@
                     <span data-bind="i18n: 'Try again'"></span>
                 </button>
             </div>
-            <div class="message success" role="status" data-bind="visible: embedState() === 'paid'">
+            <div class="message success" role="status" data-bind="visible: embedState() === 'paid' && !placing()">
                 <span data-bind="i18n: 'Your payment is confirmed. Click Place Order to finish your order.'"></span>
             </div>
             <div class="message error" role="alert" data-bind="visible: embedState() === 'blocked'">
@@ -42,6 +42,8 @@
             <!-- hidden once paid: the widget's own receipt would show beside the messages above
                  and under the place-order loader -->
             <div id="shubo-flitt-embed" data-bind="visible: !paid()"></div>
+            <div class="message error shubo-flitt-decline" role="alert"
+                 data-bind="visible: declineMessage() !== '' && embedState() === 'ready', text: declineMessage"></div>
         </div>
         <!-- /ko -->
         <!-- ko ifnot: isEmbedMode() -->
@@ -75,6 +77,7 @@
                         attr: {title: $t('Place Order')},
                         css: {disabled: !isPlaceOrderActionAllowed()},
                         enable: (getCode() == isChecked()) && embedState() !== 'blocked'
+                            && (!isEmbedMode() || ((embedState() === 'ready' || embedState() === 'paid') && !refreshing()))
                         "
                         disabled>
                     <span data-bind="i18n: 'Place Order'"></span>

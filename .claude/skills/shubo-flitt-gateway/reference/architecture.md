@@ -62,7 +62,8 @@ Authorize Only mode.
 | Mint | `Model/Checkout/RedirectUrlManager` | Redirect URL mint/reuse per order (saves via `OrderPaymentRepository`) |
 | Verify | `Model/Checkout/PaymentVerifier` | Signed status must prove: approved, order_id binding, merchant, exact amount+currency, no reversal, minted preauth mode |
 | Money | `Model/Checkout/HoldCapture` | Capture a verified hold, confirm via signed `additional_info.capture_status`; skips capture only for a wallet payment that reports no `capture_status` (one-stage charge); a wallet `hold` is captured |
-| Resume | `Model/Checkout/PaymentStateResolver` | Quote-level classification for JS: `none/unpaid/paid/blocked/unknown` |
+| Resume | `Model/Checkout/PaymentStateResolver` | Quote-level classification for JS: `none/unpaid/paid/blocked/unknown`; checks the cached session, then the quote's other sessions |
+| Resume | `Model/Checkout/PaidSessionFinder` | An approved, not fully reversed session among ALL the quote's ledger rows (live signed status); used to refuse new mints and to block re-paying |
 | Callback | `Controller/Callback/Index` → `Model/Callback/Processor` | CSRF-exempt POST; ledger → store → secret → signature, then classify; `Result` 200/400/503 |
 | Settle | `Model/Callback/OrderSettler` | THE single settle service (callback, return, reconciler) |
 | URLs | `Model/Callback/CallbackUrl` | `server_callback_url`, `response_url`/`cancel_url` (redirect-free — Flitt doesn't follow redirects) |

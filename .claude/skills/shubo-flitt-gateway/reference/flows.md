@@ -11,13 +11,21 @@ Amounts to Flitt are **minor units** (15.00 GEL → 1500). Flitt order ids are
    `minted`, caches the session on the quote payment (`flitt_order_id`,
    `flitt_token_*`). Reuse only while amount/currency/preauth/callback URL/
    rectoken flag all match and the mint is fresh.
-2. Widget mounts in `#shubo-flitt-embed`. Totals change → re-tokenize
-   (debounced), re-mount only if the token changed.
-3. Customer clicks **Place Order** → Magento validators → widget `submit()`
+   No new session is minted while another session of the quote is approved
+   (`PaidSessionFinder`, live status): the endpoint answers **409** with the
+   payment state instead, and the form shows "paid" or "contact us".
+2. Widget mounts in `#shubo-flitt-embed`; one 30 s timer covers the script,
+   the token and the widget's ready event. Totals change → pay buttons wait
+   (`refreshing`) → re-tokenize (debounced), re-mount only if the token changed.
+3. Customer clicks **Place Order** → Magento validators + the billing address
+   must be set (`canStartPayment()`; the same gate for wallet taps) → widget `submit()`
    → Flitt payment (3DS overlay possible). A decline keeps the same token
    retryable (`delayed=Y`).
 4. Widget `success` → JS calls standard `placeOrder` (JS triggers only);
    the widget is hidden from here on (`paid`).
+   The "click Place Order" hint stays hidden while that placement runs
+   (`placing`); it shows only when the placement does not start, fails, or a
+   paid session is resumed after a reload.
 5. Server: placement runs the pool command —
    - `authorize_capture`: `CaptureStrategyCommand` → `VerifyChargeCommand` →
      `PaymentVerifier` (signed status: approved, binding, merchant, exact
@@ -151,6 +159,8 @@ then "void" is a refund.
   `shubo_flitt` tokens (core silently hides unclaimed ones).
 - **Wallets:** toggles add Google/Apple Pay to the embed. Wallet taps bypass
   `placeOrder`, so a capture-phase click gate runs Magento validators first;
-  success shares the card completion path. `HoldCapture` captures a wallet
+  success shares the card completion path. Enter in a card field (the widget
+  would submit on its own) is routed through `placeOrder` by a capture-phase
+  key gate. `HoldCapture` captures a wallet
   payment whose signed `capture_status` is `hold`, and skips the capture only
   when a wallet payment reports no `capture_status` (one-stage charge).
