@@ -33,7 +33,7 @@
                     <span data-bind="i18n: 'Try again'"></span>
                 </button>
             </div>
-            <div class="message success" role="status" data-bind="visible: embedState() === 'paid'">
+            <div class="message success" role="status" data-bind="visible: embedState() === 'paid' && !placing()">
                 <span data-bind="i18n: 'Your payment is confirmed. Click Place Order to finish your order.'"></span>
             </div>
             <div class="message error" role="alert" data-bind="visible: embedState() === 'blocked'">

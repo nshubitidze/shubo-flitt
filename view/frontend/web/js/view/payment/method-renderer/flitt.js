@@ -114,7 +114,10 @@ define([
         initObservable: function () {
             // refreshing: the totals changed and the form's token is being checked —
             // paying now could pay the old amount, so pay buttons wait for it.
-            this._super().observe(['active', 'paid', 'refreshing']);
+            // placing: a paid order is being placed — the "click Place Order"
+            // hint is for when placement did not start or failed, not for
+            // the seconds before the success page.
+            this._super().observe(['active', 'paid', 'refreshing', 'placing']);
 
             // Redirect mode: placement succeeds into pending_payment and
             // afterPlaceOrder() navigates to the hosted-page handoff instead
@@ -288,8 +291,19 @@ define([
                 return false;
             }
 
-            if (!this.isEmbedMode() || this.paid()) {
+            if (!this.isEmbedMode()) {
                 return this._super(data, event);
+            }
+
+            if (this.paid()) {
+                this.placing(true);
+                // Core returns false when it does not start the placement
+                // (validators, billing address) — then the hint must show.
+                const started = this._super(data, event);
+
+                this.placing(started);
+
+                return started;
             }
 
             if (event) {
@@ -579,9 +593,10 @@ define([
                 self.declineMessage('');
                 clearTimeout(self._totalsTimer);
                 self.refreshing(false);
-                // Shown at once: if the placement cannot start (core refuses
-                // without a message), the customer still sees that the payment
-                // went through and that Place Order finishes the order.
+                // The paid state hides the card form at once; its "click Place
+                // Order" hint shows only if the placement below does not start
+                // or fails (placing), so a normal payment goes straight to the
+                // success page without it.
                 self.embedState('paid');
                 self.placeOrder();
             });
@@ -928,6 +943,8 @@ define([
          * @returns {void}
          */
         onPlacementFailed: function () {
+            this.placing(false);
+
             if (!this.isEmbedMode() || !this.paid()) {
                 return;
             }
