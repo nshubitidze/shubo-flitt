@@ -6,6 +6,7 @@ namespace Shubo\Flitt\Controller\Redirect;
 
 use Magento\Checkout\Model\Session as CheckoutSession;
 use Magento\Framework\App\Action\HttpGetActionInterface;
+use Magento\Framework\App\CacheInterface;
 use Magento\Framework\App\Action\HttpPostActionInterface;
 use Magento\Framework\App\CsrfAwareActionInterface;
 use Magento\Framework\App\Request\Http as HttpRequest;
@@ -14,6 +15,7 @@ use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Controller\Result\Redirect;
 use Magento\Framework\Controller\Result\RedirectFactory;
 use Magento\Framework\Message\ManagerInterface as MessageManager;
+use Magento\Framework\Serialize\Serializer\Json;
 use Psr\Log\LoggerInterface;
 use Shubo\Flitt\Model\Checkout\ReturnDisposition;
 use Shubo\Flitt\Model\Checkout\ReturnHandler;
@@ -33,8 +35,11 @@ use Shubo\Flitt\Model\Ui\ConfigProvider;
  * a session, its guest Set-Cookie would OVERWRITE the customer's real
  * session cookie and log them out. So the POST leg runs session-less
  * (Plugin\ReturnSessionChecker, PayPal's TransparentSessionChecker pattern)
- * and only TRAMPOLINES: 302 to this same route as GET with the params
- * carried over. The browser sends Lax cookies on the top-level GET, so the
+ * and only TRAMPOLINES: it keeps Flitt's fields in the cache under a random
+ * one-time key and 302s to this same route as GET with only that key — the
+ * fields include the payer's e-mail and, for saved cards, the rectoken, which
+ * must not end up in URLs (web-server logs, browser history). The browser
+ * sends Lax cookies on the top-level GET, so the
  * GET leg works inside the customer's original, still-logged-in session.
  * When the cookie is genuinely gone (payment finished from an email link in
  * another browser), identification rides the SIGNED payload (ReturnHandler)
@@ -46,12 +51,30 @@ use Shubo\Flitt\Model\Ui\ConfigProvider;
 class Complete implements HttpGetActionInterface, HttpPostActionInterface, CsrfAwareActionInterface
 {
     /**
+     * Query parameter carrying the one-time key from the POST leg to the GET leg.
+     */
+    private const string KEY_PARAM = 'r';
+
+    /**
+     * Cache id prefix of a stashed return.
+     */
+    private const string CACHE_PREFIX = 'shubo_flitt_return_';
+
+    /**
+     * Seconds a stashed return waits for its GET leg (the browser follows the
+     * 302 at once).
+     */
+    private const int STASH_LIFETIME = 600;
+
+    /**
      * @param HttpRequest $request
      * @param CheckoutSession $checkoutSession
      * @param ReturnHandler $returnHandler
      * @param RedirectFactory $redirectFactory
      * @param MessageManager $messageManager
      * @param LoggerInterface $logger Bound to ShuboFlittLogger in di.xml.
+     * @param CacheInterface $cache
+     * @param Json $json
      */
     public function __construct(
         private readonly HttpRequest $request,
@@ -60,6 +83,8 @@ class Complete implements HttpGetActionInterface, HttpPostActionInterface, CsrfA
         private readonly RedirectFactory $redirectFactory,
         private readonly MessageManager $messageManager,
         private readonly LoggerInterface $logger,
+        private readonly CacheInterface $cache,
+        private readonly Json $json,
     ) {
     }
 
@@ -91,12 +116,12 @@ class Complete implements HttpGetActionInterface, HttpPostActionInterface, CsrfA
         if ($this->request->isPost()) {
             // Session-less trampoline (see the class docblock): nothing here
             // may touch the session — no messages, no checkoutSession reads.
-            return $redirect->setPath('flitt/redirect/complete', ['_query' => $this->forwardableParams()]);
+            return $redirect->setPath('flitt/redirect/complete', ['_query' => [self::KEY_PARAM => $this->stash()]]);
         }
 
         try {
             $result = $this->returnHandler->handle(
-                $this->request->getParams(),
+                $this->returnParams(),
                 $this->sessionIncrementId()
             );
         } catch (\Throwable $e) {
@@ -151,24 +176,58 @@ class Complete implements HttpGetActionInterface, HttpPostActionInterface, CsrfA
     }
 
     /**
-     * The params the POST trampoline carries onto the GET leg: scalars only
-     * (the signed envelope is flat), minus Magento's own form_key. The
-     * signature rides along, so the GET leg re-authenticates the payload
-     * exactly like a direct GET return from Flitt.
+     * Keep the POSTed return fields in the cache under a random one-time key.
      *
-     * @return array<string, string>
+     * The signed envelope is flat; Magento's own form_key is left out.
+     *
+     * @return string The key for the GET leg.
      */
-    private function forwardableParams(): array
+    private function stash(): string
     {
         $params = [];
 
-        foreach ($this->request->getParams() as $key => $value) {
+        foreach ($this->request->getPostValue() ?: $this->request->getParams() as $key => $value) {
             if (is_scalar($value) && $key !== 'form_key') {
                 $params[(string)$key] = (string)$value;
             }
         }
 
-        return $params;
+        $key = bin2hex(random_bytes(16));
+        $this->cache->save($this->json->serialize($params), self::CACHE_PREFIX . $key, [], self::STASH_LIFETIME);
+
+        return $key;
+    }
+
+    /**
+     * The return fields for the GET leg: from the one-time cache entry the
+     * POST leg left (read once, then deleted), or the query itself when
+     * Flitt returned by GET. A missing or used key gives no fields — the
+     * handler then falls back to the session, which discloses nothing.
+     *
+     * @return array<string, mixed>
+     */
+    private function returnParams(): array
+    {
+        $key = (string)$this->request->getParam(self::KEY_PARAM, '');
+
+        if ($key === '') {
+            return $this->request->getParams();
+        }
+
+        if (!preg_match('/^[0-9a-f]{32}$/', $key)) {
+            return [];
+        }
+
+        $stored = $this->cache->load(self::CACHE_PREFIX . $key);
+        $this->cache->remove(self::CACHE_PREFIX . $key);
+
+        if (!is_string($stored) || $stored === '') {
+            return [];
+        }
+
+        $params = $this->json->unserialize($stored);
+
+        return is_array($params) ? $params : [];
     }
 
     /**

@@ -60,7 +60,7 @@ Trust chain, strictly before any mutation: parse (JSON; legacy form-encoded
 fallback) → `order_id` → ledger row (unknown → **200 ignored**, no existence
 oracle) → store → secret (missing → 503) → **signature** (bad → 400) →
 merchant id (mismatch → 400) → `OrderLock` (busy → 503) → record facts
-(`payment_id`, status, card mask/type/bin, rectoken) → classify:
+(`payment_id`, status, card mask/type/bin — never the rectoken) → classify:
 
 | Flitt status / situation | Result |
 |---|---|
@@ -83,8 +83,9 @@ the saved card (`TokenPersister`), ledger `settled`.
 - Flitt returns via a **cross-site POST**, which carries no SameSite=Lax session
   cookie. `ReturnSessionChecker` prevents a session from starting on that POST
   (a new guest cookie would log the customer out); the controller answers with a
-  session-less 302 to the same route as GET carrying the signed payload, and the
-  GET runs inside the customer's real session.
+  session-less 302 to the same route as GET carrying only a one-time key (`r`):
+  the POSTed fields wait in the cache for 10 min and are read once, then deleted.
+  The GET runs inside the customer's real session.
 - `ReturnHandler` identifies the payment: ① signed payload (ledger → secret →
   signature, the callback's trust chain) ② the session's own last order ③ else
   Unknown. The verdict comes from fresh order state under lock + signed status:
@@ -111,13 +112,18 @@ Per ledger row, under `OrderLock`, decided on the signed status, batch cap 50:
   answers "Order not found" (1018 — it never created the session, e.g.
   after the merchant account was switched) → `expired` + cancel too, so the
   row is not polled forever.
-- **Parked holds** (`approved` idle past grace): matching pending order →
+- **Parked holds** (`approved` idle past grace): the order is found by the
+  reserved increment id, or by the cart (`quote_id`) when it carries this
+  session; matching pending order →
   settle; placed order but observer missed → mark settled; paid embed session
   with no order → `PaidQuotePlacer` places it (same quote, same reserved
   increment, exact money match; a guest quote first gets the customer
   fields core's `placeOrder()` would set — e-mail from the billing address —
   and the confirmation e-mail is sent, because core sends it only in the
-  storefront/web API areas); otherwise → **reverse in full**
+  storefront/web API areas). A cart that is already inactive: placed another
+  way (another method, another session, a new increment id) → reverse; no
+  order and unchanged for 15 min (a crashed submit) → reverse; changed in the
+  last 15 min → wait (placement in flight). Otherwise → **reverse in full**
   (`reverse_id rec-{increment}`), ledger `reversed`.
 
 Core's `sales_clean_orders` cron cancels `pending_payment` orders after
@@ -144,11 +150,16 @@ then "void" is a refund.
 ## 7. Saved cards (Magento_Vault) and wallets
 
 - **Issue:** logged-in customer + vault active → every mint sends
-  `required_rectoken=Y`; the consent checkbox decides **persistence** at
+  `required_rectoken=Y`; the consent checkbox (unticked by default — core
+  ticks it) decides **persistence** at
   settle (`TokenPersister` at both settle sites; token from the signed
-  envelope or the ledger's callback facts).
+  status only — the ledger never stores the rectoken).
 - **Pay:** the `shubo_flitt_vault` method → `vault_authorize`/`vault_sale` →
-  `RecurringCharge`: `POST /recurring` with the rectoken and `preauth=Y`
+  `RecurringCharge`: first an earlier saved-card session of the same cart
+  (ledger `saved_card=1`, same amount, within lifetime) is checked on the
+  signed status — approved on the same card → continued (capture + record),
+  no second charge; still processing → refused for now; never created (1018)
+  or ended → closed in the ledger. Otherwise `POST /recurring` with the rectoken and `preauth=Y`
   (synchronous SIGNED envelope is authoritative), then capture for
   `vault_sale`. Core Vault resets the payment method to `shubo_flitt`, so
   callbacks, refunds, voids and the reconciler all apply unchanged. Dead-token

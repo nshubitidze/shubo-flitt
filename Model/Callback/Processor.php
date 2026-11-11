@@ -365,7 +365,6 @@ class Processor
             'masked_card' => $this->stringOrNull($params['masked_card'] ?? null),
             'card_type' => $this->stringOrNull($params['card_type'] ?? null),
             'card_bin' => $this->intOrNull($params['card_bin'] ?? null),
-            'rectoken' => $this->stringOrNull($params['rectoken'] ?? null),
             'rectoken_lifetime' => $this->stringOrNull($params['rectoken_lifetime'] ?? null),
         ];
     }

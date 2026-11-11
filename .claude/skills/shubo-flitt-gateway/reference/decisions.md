@@ -97,7 +97,10 @@ little gain.
 
 The order is identified from the signed return payload and the ledger; the
 session is only a fallback. The cross-site POST return is turned into a
-session-less redirect to the same route as GET (`ReturnSessionChecker`).
+session-less redirect to the same route as GET (`ReturnSessionChecker`). The
+redirect carries only a random one-time key; the POSTed fields wait in the
+cache — they include the payer's e-mail and, for logged-in customers, the
+rectoken, which must not land in URLs (web-server logs, browser history).
 
 Why: the cross-site POST carries no SameSite=Lax cookie; letting it start a
 session overwrote the customer's cookie and logged them out.
@@ -230,3 +233,66 @@ state endpoint instead of showing the form; the "already paid" warning shows onl
 card method. Place Order (embed) is active only in the `ready` and `paid` states.
 
 Why: the widget stayed hidden (paid) with no message — an empty card area.
+
+## Card tokens live only in the vault
+
+The ledger (`shubo_flitt_order`) does not store the `rectoken`; the column was dropped. A card token is kept only
+as the Magento vault token, created at settle from Flitt's signed status when the customer ticked "save this card"
+(unticked by default). Logs mask `rectoken`, `response_signature_string` (it lists every signed value in test mode)
+and `sender_email`.
+
+Why: every callback wrote the rectoken into the ledger whether or not the customer consented, and kept it — a
+chargeable credential (`/recurring` has no 3-D Secure) outside the vault, for customers who never asked to save a card.
+
+## A saved card belongs to the merchant that issued it
+
+`TokenPersister` records the issuing Flitt merchant (`merchantId` in the token details, from the signed status).
+`TokenMerchant` decides whether a card belongs to the store's merchant; a frontend plugin on core's
+`CustomerTokenManagement::getCustomerSessionTokens()` leaves other merchants' cards out of checkout and My Account,
+and `RecurringCharge` refuses one before calling Flitt. A card without a recorded merchant is treated as foreign.
+
+Why: a rectoken works only at its merchant. After switching from the test to the live merchant, every card saved
+during testing stayed listed and failed (error 1007); with customer accounts shared across websites, a card of
+one website's merchant was offered on another.
+
+## Saving the same card again reuses its vault row
+
+When the rectoken is already stored for the customer, `TokenPersister` updates that row (details, expiry, visible)
+and attaches it, instead of a new token.
+
+Why: core detects a duplicate card by a public hash that includes the token details, but the table is unique on
+method + customer + gateway token. Any change in the details (an expiry, the merchant id) made core insert a second
+row; the insert failed and the order save rolled back after the payment had been captured.
+
+## An inactive cart does not hold a payment back forever
+
+When a parked payment's cart is already inactive, `PaidQuotePlacer` returns the money unless a placement could still
+be running: if the cart has an order (any method, any increment id) the payment is not part of it; with no order, the
+cart is waited for only 15 minutes after its last change. The reconciler also finds the session's own order by cart,
+so a retry under a new increment id is settled, not reversed.
+
+Why: "inactive cart, no order with the reserved increment id" was always read as "placement in flight" — a customer
+who paid by card, saw the placement fail and finished with another method left the card payment unreleased until
+core deleted the cart (30 days), and enough such rows blocked the reconciler's batch.
+
+## A saved-card retry continues the payment already made
+
+Saved-card sessions are marked in the ledger (`saved_card = 1`). Before calling `/recurring`, `RecurringCharge` looks
+at the cart's earlier saved-card sessions for the same amount and asks Flitt's signed status: an approved one on the
+same card is continued (capture + record) instead of charging again; one that is still `created`/`processing`, or
+whose status cannot be read, refuses the retry ("try again in a moment"); one Flitt never created (1018) or that
+ended is closed in the ledger and a new charge goes out.
+
+Why: every attempt minted a new order id. When `/recurring` was approved but the capture after it failed or timed
+out — or `/recurring` itself timed out — placement failed and the customer's retry charged the saved card a second
+time.
+
+## A wallet charge is called one-stage only on a fresh signed status
+
+When the envelope at hand shows a wallet payment without `capture_status`, `HoldCapture` reads the signed status
+once more and decides on that: a `hold` is captured; still no `capture_status` → one-stage charge, logged as a
+warning to check.
+
+Why: skipping the capture of a payment that is really a hold lets it lapse while the order ships as paid, and the
+envelopes passed in can be partial (the synchronous `/recurring` answer, a callback). Whether Apple Pay or a live
+merchant's wallet payment can be one-stage at all is an open question for Flitt.

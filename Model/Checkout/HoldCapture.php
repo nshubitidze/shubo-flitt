@@ -63,14 +63,30 @@ class HoldCapture
         // captured, although the payment_method was "googlepay" and Flitt's
         // docs limit preauth/capture to "the card payment method".
         if ($this->isOneStageCharge($status)) {
-            $this->logger->info(sprintf(
-                'capture: flitt order %s paid via "%s" with no capture status — one-stage charge,'
-                . ' nothing to capture',
-                $flittOrderId,
-                $this->chargeMethod($status)
-            ));
+            // Skipping the capture of a payment that is really a hold would
+            // leave it to lapse while the order ships as paid. The envelope at
+            // hand may be partial (a synchronous /recurring answer, a
+            // callback), so only a freshly read signed status decides.
+            try {
+                $fresh = $this->client->getOrderStatus($flittOrderId, $storeId);
+            } catch (FlittApiException $e) {
+                throw new CommandException(
+                    __('Your payment could not be verified right now. Please try again in a moment.')
+                );
+            }
 
-            return;
+            if ($this->isOneStageCharge($fresh)) {
+                $this->logger->warning(sprintf(
+                    'capture: flitt order %s paid via "%s" and the signed status reports no capture status —'
+                    . ' treated as a one-stage charge, nothing captured. Check it at Flitt if unsure.',
+                    $flittOrderId,
+                    $this->chargeMethod($fresh)
+                ));
+
+                return;
+            }
+
+            $status = $fresh;
         }
 
         $alreadyCaptured = $this->capturedAmount($status);

@@ -62,8 +62,10 @@ class Ledger
     ];
 
     /**
-     * Callback-borne facts recordCallback() may write — includes the vault
-     * readiness set (rectoken/card metadata) captured from day one.
+     * Callback-borne facts recordCallback() may write. The rectoken itself is
+     * never stored here: it is a chargeable credential, kept only in the vault
+     * token when the customer asked to save the card (read from the signed
+     * status at settle).
      */
     private const array CALLBACK_FACT_COLUMNS = [
         'payment_id',
@@ -72,7 +74,6 @@ class Ledger
         'masked_card',
         'card_type',
         'card_bin',
-        'rectoken',
         'rectoken_lifetime',
     ];
 
@@ -100,6 +101,7 @@ class Ledger
      * @param int $amount Minor units (tetri/cents).
      * @param string $currency
      * @param int $lifetime Seconds the Flitt order stays payable.
+     * @param bool $savedCard True for a saved-card payment (POST /recurring).
      * @return void
      */
     public function recordMint(
@@ -110,6 +112,7 @@ class Ledger
         int $amount,
         string $currency,
         int $lifetime,
+        bool $savedCard = false,
     ): void {
         $this->resource->getConnection()->insertOnDuplicate(
             $this->resource->getTableName(self::TABLE),
@@ -122,6 +125,7 @@ class Ledger
                 'currency' => $currency,
                 'lifetime' => $lifetime,
                 'state' => self::STATE_MINTED,
+                'saved_card' => (int)$savedCard,
             ],
             ['store_id', 'quote_id', 'increment_id', 'amount', 'currency', 'lifetime']
         );
@@ -171,8 +175,8 @@ class Ledger
      * Record the facts a (signature-verified) callback delivered.
      *
      * Null facts are skipped, never overwriting a previously recorded value
-     * with nothing (e.g. a retried early callback without a rectoken must
-     * not erase the token a later one carried). Bumps callback_count and
+     * with nothing (e.g. a retried early callback without card facts must
+     * not erase the facts a later one carried). Bumps callback_count and
      * last_callback_at regardless.
      *
      * @param string $flittOrderId

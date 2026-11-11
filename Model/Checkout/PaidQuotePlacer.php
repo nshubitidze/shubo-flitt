@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace Shubo\Flitt\Model\Checkout;
 
 use Magento\Customer\Api\Data\GroupInterface;
+use Magento\Framework\Api\SearchCriteriaBuilder;
 use Magento\Framework\Exception\NoSuchEntityException;
 use Magento\Quote\Api\CartManagementInterface;
 use Magento\Quote\Api\CartRepositoryInterface;
 use Magento\Quote\Model\Quote;
 use Magento\Quote\Model\QuoteManagement;
+use Magento\Sales\Api\OrderRepositoryInterface;
 use Magento\Sales\Model\Order;
 use Magento\Sales\Model\Order\Email\Sender\OrderSender;
 use Psr\Log\LoggerInterface;
@@ -34,11 +36,19 @@ use Shubo\Flitt\Model\Ui\ConfigProvider;
 class PaidQuotePlacer
 {
     /**
+     * How long an inactive cart without an order counts as a placement in
+     * flight.
+     */
+    private const int IN_FLIGHT_SECONDS = 900;
+
+    /**
      * @param CartRepositoryInterface $cartRepository
      * @param QuoteManagement $quoteManagement
      * @param Config $config
      * @param OrderSender $orderSender
      * @param LoggerInterface $logger Bound to ShuboFlittLogger in di.xml.
+     * @param OrderRepositoryInterface $orderRepository
+     * @param SearchCriteriaBuilder $searchCriteriaBuilder
      */
     public function __construct(
         private readonly CartRepositoryInterface $cartRepository,
@@ -46,6 +56,8 @@ class PaidQuotePlacer
         private readonly Config $config,
         private readonly OrderSender $orderSender,
         private readonly LoggerInterface $logger,
+        private readonly OrderRepositoryInterface $orderRepository,
+        private readonly SearchCriteriaBuilder $searchCriteriaBuilder,
     ) {
     }
 
@@ -82,11 +94,24 @@ class PaidQuotePlacer
         }
 
         if (!$quote->getIsActive()) {
-            // Submitted-but-orderless is either a placement in flight RIGHT
-            // NOW or a crashed submit — never reverse on that evidence.
-            throw new PaymentInFlightException(
-                __('Quote %1 is inactive but its order was not found — possible placement in flight.', $quoteId)
-            );
+            if ($this->quoteHasOrder($quoteId)) {
+                // The cart was placed another way (another method, another
+                // payment session, a retry under a new increment id): this
+                // money is not part of that order.
+                return null;
+            }
+
+            // Submitted-but-orderless: a placement in flight right now, or a
+            // submit that crashed. A placement finishes in seconds, so only a
+            // recently changed cart is waited for; after that no order will
+            // come and the money goes back.
+            if (strtotime((string)$quote->getUpdatedAt() . ' UTC') > time() - self::IN_FLIGHT_SECONDS) {
+                throw new PaymentInFlightException(
+                    __('Quote %1 is inactive but its order was not found — possible placement in flight.', $quoteId)
+                );
+            }
+
+            return null;
         }
 
         $payment = $quote->getPayment();
@@ -200,5 +225,18 @@ class PaidQuotePlacer
 
         $quote->setCustomerIsGuest(true);
         $quote->setCustomerGroupId(GroupInterface::NOT_LOGGED_IN_ID);
+    }
+
+    /**
+     * Whether any order was placed from this cart.
+     *
+     * @param int $quoteId
+     * @return bool
+     */
+    private function quoteHasOrder(int $quoteId): bool
+    {
+        return $this->orderRepository->getList(
+            $this->searchCriteriaBuilder->addFilter('quote_id', $quoteId)->setPageSize(1)->create()
+        )->getTotalCount() > 0;
     }
 }

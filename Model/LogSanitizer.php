@@ -17,9 +17,17 @@ class LogSanitizer
 {
     /**
      * Payload keys whose values must never appear in a log, lower-cased
-     * (matching is case-insensitive).
+     * (matching is case-insensitive). Flitt's response_signature_string
+     * (sent in test mode) lists every signed value, the rectoken included;
+     * sender_email is the payer's personal data.
      */
-    private const array MASKED_KEYS = ['rectoken', 'card_number', 'cvv2'];
+    private const array MASKED_KEYS = [
+        'rectoken',
+        'card_number',
+        'cvv2',
+        'response_signature_string',
+        'sender_email',
+    ];
 
     /**
      * Max characters of a raw body quoted in a log entry, unless di.xml sets another.
@@ -84,7 +92,10 @@ class LogSanitizer
     public function excerpt(string $body): string
     {
         $keys = implode('|', array_map(static fn (string $key): string => preg_quote($key, '/'), $this->keys()));
-        $masked = (string)preg_replace('/"(' . $keys . ')"\s*:\s*"[^"]*"/i', '"$1":"***"', $body);
+        // JSON values may hold escaped quotes (the signature string carries
+        // the additional_info JSON); form-encoded bodies use key=value&.
+        $masked = (string)preg_replace('/"(' . $keys . ')"\s*:\s*"(?:[^"\\\\]|\\\\.)*"/i', '"$1":"***"', $body);
+        $masked = (string)preg_replace('/(^|&)(' . $keys . ')=[^&]*/i', '$1$2=***', $masked);
 
         return mb_substr($this->line($masked), 0, $this->bodyLimit);
     }

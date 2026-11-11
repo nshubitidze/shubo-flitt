@@ -78,7 +78,7 @@ Authorize Only mode.
 | Cron | `Model/Checkout/PaidQuotePlacer` | Places the order for a paid embed session whose browser died |
 | Vault | `Model/Vault/RecurringCharge`, `Model/Vault/TokenPersister`, `Model/Ui/TokenUiComponentProvider`, `Block/Customer/CardRenderer` | Charge by rectoken; persist tokens at settle; checkout tile; My Account list |
 | UI | `Model/Ui/ConfigProvider` | `CODE`/`VAULT_CODE` constants + `window.checkoutConfig.payment.shubo_flitt` |
-| Log | `Model/LogSanitizer` | mask (`rectoken`, `card_number`, `cvv2`, case-insensitive; more keys and the excerpt length via di.xml arguments `maskedKeys` / `bodyLimit`), `line()` anti log-forging, `excerpt()` |
+| Log | `Model/LogSanitizer` | mask (`rectoken`, `card_number`, `cvv2`, `response_signature_string`, `sender_email`, case-insensitive; more keys and the excerpt length via di.xml arguments `maskedKeys` / `bodyLimit`), `line()` anti log-forging, `excerpt()` |
 
 ## Frontend
 

@@ -14,6 +14,13 @@
     <!-- Saved cards: the checkout component for each stored Flitt
          card. Core keys this registry by the PROVIDER method code (tokens
          persist with the code the order paid with). -->
+    <!-- Saved cards: checkout and My Account list only the cards issued by
+         this store's Flitt merchant (a rectoken works only there). -->
+    <type name="Magento\Vault\Model\CustomerTokenManagement">
+        <plugin name="shubo_flitt_hide_foreign_merchant_tokens"
+                type="Shubo\Flitt\Plugin\Vault\HideForeignMerchantTokens"/>
+    </type>
+
     <type name="Magento\Vault\Model\Ui\TokensConfigProvider">
         <arguments>
             <argument name="tokenUiComponentProviders" xsi:type="array">

@@ -21,7 +21,8 @@
             "callback_count": true,
             "last_callback_at": true,
             "created_at": true,
-            "updated_at": true
+            "updated_at": true,
+            "saved_card": true
         },
         "index": {
             "SHUBO_FLITT_ORDER_INCREMENT_ID": true,
