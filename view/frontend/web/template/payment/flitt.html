@@ -40,8 +40,9 @@
                 <span data-bind="i18n: 'Your payment needs a manual review. Please contact us before paying again.'"></span>
             </div>
             <!-- hidden once paid: the widget's own receipt would show beside the messages above
-                 and under the place-order loader -->
-            <div id="shubo-flitt-embed" data-bind="visible: !paid()"></div>
+                 and under the place-order loader; hidden when failed: a widget that errored before
+                 "ready" shows its half-built form and its own error popup beside the failed message -->
+            <div id="shubo-flitt-embed" data-bind="visible: !paid() && embedState() !== 'failed'"></div>
             <div class="message error shubo-flitt-decline" role="alert"
                  data-bind="visible: declineMessage() !== '' && embedState() === 'ready', text: declineMessage"></div>
         </div>
