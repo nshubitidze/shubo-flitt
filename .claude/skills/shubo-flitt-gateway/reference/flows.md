@@ -23,6 +23,9 @@ Amounts to Flitt are **minor units** (15.00 GEL → 1500). Flitt order ids are
    retryable (`delayed=Y`).
 4. Widget `success` → JS calls standard `placeOrder` (JS triggers only);
    the widget is hidden from here on (`paid`).
+   The "click Place Order" hint stays hidden while that placement runs
+   (`placing`); it shows only when the placement does not start, fails, or a
+   paid session is resumed after a reload.
 5. Server: placement runs the pool command —
    - `authorize_capture`: `CaptureStrategyCommand` → `VerifyChargeCommand` →
      `PaymentVerifier` (signed status: approved, binding, merchant, exact
