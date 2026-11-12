@@ -136,6 +136,22 @@ stores. The payment flow (card only, Magento's Place Order as the single
 trigger, the minted token) was verified with these pins; a look change must
 not be able to alter it.
 
+## Themes restyle the method through slots and state attributes
+
+Markup a theme adds around the card form goes into four fixed template slots
+(`afterTitle`, `loading`, `placeOrderLabel`, `afterActions`) set in the same
+layout-XML component as `widgetOptions`; CSS hooks are `data-state` and
+`data-attempted` on the embed area. These are the supported contract; the
+rest of the template may change.
+
+Why: before, a theme that needed a logo, another button label or a skeleton
+had to copy `payment/flitt.html`, and every module release had to be carried
+into that copy by hand — a missed binding breaks payments silently. Slots
+keep the module's template (and its flow bindings) in charge. The set is
+small on purpose: each slot and attribute is a promise to keep. A "paying"
+state is not offered: the widget emits no event when it starts processing a
+card, so the module could not keep it true.
+
 ## A failed SDK load is retried for real
 
 "Try again" after Flitt's `checkout.js` failed to load (network, ad blocker,

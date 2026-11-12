@@ -22,6 +22,13 @@
  * checkout_index_index.xml — or by overriding getCustomWidgetOptions() in a
  * mixin. Keys that would change the payment flow are dropped, and the
  * module's pinned options always win (buildOptions()).
+ *
+ * Theme hooks, so a theme can restyle the method without copying the
+ * template (README, "Customising the look"): the `templates` config of the
+ * same component fills the slots named in SLOTS with the theme's own
+ * Knockout templates (rendered with this component as their context), and
+ * the embed area carries data-state and, once pay was pressed on the
+ * current form, data-attempted.
  */
 define([
     'jquery',
@@ -57,6 +64,16 @@ define([
     const HTTP_CONFLICT = 409;
     const GENERIC_LOAD_ERROR = $t('The payment form could not be loaded. Please try again.');
     const SDK_MODULE = 'flittCheckout';
+
+    /**
+     * Template slots a theme may fill through the layout-XML `templates`
+     * config (slot name => template path, e.g. 'Vendor_Theme/flitt/note'):
+     * - afterTitle: inside the method's title label, after the title;
+     * - loading: inside the loading box, after its text (e.g. a skeleton);
+     * - placeOrderLabel: replaces the place-order button's "Place Order";
+     * - afterActions: after the place-order button.
+     */
+    const SLOTS = ['afterTitle', 'loading', 'placeOrderLabel', 'afterActions'];
 
     /**
      * Widget option keys that decide WHAT is paid and HOW the payment is
@@ -117,7 +134,9 @@ define([
             // placing: a paid order is being placed — the "click Place Order"
             // hint is for when placement did not start or failed, not for
             // the seconds before the success page.
-            this._super().observe(['active', 'paid', 'refreshing', 'placing']);
+            // attempted: pay was pressed on the current form (themes may hold
+            // back field errors until then — data-attempted on the embed area).
+            this._super().observe(['active', 'paid', 'refreshing', 'placing', 'attempted']);
 
             // Redirect mode: placement succeeds into pending_payment and
             // afterPlaceOrder() navigates to the hosted-page handoff instead
@@ -313,6 +332,8 @@ define([
                 event.preventDefault();
             }
 
+            this.attempted(true);
+
             if (!this.validate() || !additionalValidators.validate() || !this.canStartPayment()) {
                 return false;
             }
@@ -496,6 +517,8 @@ define([
             this.embedError('');
             this.declineMessage('');
             this.refreshing(false);
+            // a fresh form: nothing tried on it yet
+            this.attempted(false);
             this._totalsKey = this.totalsKey();
             this.ensureSdkCss();
             // One timer for the whole mount — script, token and the widget's
@@ -685,6 +708,23 @@ define([
             const custom = provider && provider.widgetOptions;
 
             return $.isPlainObject(custom) ? $.extend(true, {}, custom) : {};
+        },
+
+        /**
+         * The theme's template for a slot (SLOTS), from the layout-XML
+         * `templates` config of the shubo-flitt-payments component; '' when
+         * the slot is not filled (the template then renders its default).
+         * Read on each call: the provider is registered asynchronously.
+         *
+         * @param {String} slot
+         * @returns {String} A template path such as 'Vendor_Theme/flitt/note', or ''.
+         */
+        slotTemplate: function (slot) {
+            const provider = registry.get(this.widgetOptionsProvider);
+            const templates = provider && provider.templates;
+            const path = $.isPlainObject(templates) ? templates[slot] : '';
+
+            return SLOTS.indexOf(slot) !== -1 && typeof path === 'string' ? path : '';
         },
 
         /**
