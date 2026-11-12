@@ -116,9 +116,39 @@ values are Flitt's checkout-vue options (https://docs.flitt.com/):
 
 Options that decide what is paid or how the payment starts (`params`, the
 payment methods, the pay button, `full_screen`, …) are ignored, with a
-warning in the browser console. The card form area carries `data-state`
-(`loading`, `ready`, `failed`, `paid`, `blocked`) for your CSS. Details:
-the module skill, `reference/changing.md`.
+warning in the browser console. Details: the module skill,
+`reference/changing.md`.
+
+### Customize the payment method around the form
+
+The same component takes `templates`: your own Knockout templates for four
+fixed places in the method, so a theme does not copy the module's template.
+Each one renders with the method's component as its context (`getTitle()`,
+`isEmbedMode()`, `embedState()`, `enabledWallets()`, `paid()` …).
+
+| Slot | Where | Default |
+|---|---|---|
+| `afterTitle` | inside the method's title label, after the title (card brands, a logo) | nothing |
+| `loading` | inside the loading box, after "Loading secure payment form..." (a skeleton) | nothing |
+| `placeOrderLabel` | the place-order button's label | "Place Order" |
+| `afterActions` | after the place-order button (a security note) | nothing |
+
+```xml
+<item name="shubo-flitt-payments" xsi:type="array">
+    <item name="config" xsi:type="array">
+        <item name="templates" xsi:type="array">
+            <item name="afterTitle" xsi:type="string">Vendor_Theme/flitt/brands</item>
+        </item>
+    </item>
+</item>
+```
+
+For your CSS, the card form area (`.shubo-flitt-embed-area`) carries
+`data-state` (`idle`, `loading`, `ready`, `failed`, `paid`, `blocked`) and,
+once the customer pressed the pay button on the current form,
+`data-attempted` — e.g. to hold back field errors until then. These slots and
+attributes are the supported way to restyle the method; the rest of the
+markup may change between releases.
 
 ## Development
 

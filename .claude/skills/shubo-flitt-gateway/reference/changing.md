@@ -86,12 +86,34 @@ subscription…; one `console.warn` names what was dropped), then the
 module's pinned options on top. Adding a key to the flow list is a
 behaviour change: record it in `decisions.md`.
 
+## Change the method's markup (theme slots)
+
+Markup around the form comes in through **template slots**, not a copy of
+`payment/flitt.html`: the `templates` config of the same `shubo-flitt-payments`
+item maps a slot name to the theme's own KO template (README example). Slots
+(`SLOTS` in the renderer, read by `slotTemplate()` on each render — the
+provider registers asynchronously):
+
+| Slot | Where in `payment/flitt.html` | Default |
+|---|---|---|
+| `afterTitle` | inside the title `<label>`, after the title span | nothing |
+| `loading` | inside `.shubo-flitt-loading`, after its text | nothing |
+| `placeOrderLabel` | the place-order button's content | "Place Order" |
+| `afterActions` | after `.actions-toolbar` | nothing |
+
+A slot template renders with the renderer as `$data`, so it may read
+`getTitle()`, `isEmbedMode()`, `embedState()`, `enabledWallets()`, `paid()`,
+`placing()`, `attempted()`. A slot never takes part in the flow (no clicks
+that pay or place). Adding or moving a slot changes a public contract: keep
+old names working and say so in the README.
+
 For CSS, the embed area has `data-state` = the renderer's `embedState`
-(`idle`, `loading`, `ready`, `failed`, `paid`, `blocked`). The widget
+(`idle`, `loading`, `ready`, `failed`, `paid`, `blocked`) and `data-attempted`
+once the pay button was pressed on the current form (`attempted`, set in
+`placeOrder()` before the validators, reset when a form mounts). The widget
 container `#shubo-flitt-embed` is hidden once paid and while `failed` (a
-theme needs no CSS for that). Markup changes still
-mean a theme copy of `payment/flitt.html`; keep every binding of the
-module's template in it.
+theme needs no CSS for that). The widget gives no signal when it starts
+processing a card (`live-findings.md`), so there is no "paying" state.
 
 ## Verify a change
 
