@@ -125,6 +125,20 @@ describe the widget's events.
   its own timeout. [live 2026-07-16]
 - `error` payloads expose `error.code` / `error.message` (e.g. 2000 issuer
   decline, 2013 invalid card number). [live 2026-07-16]
+- Field validation is the widget's own and not exposed: the instance offers
+  only `$on`, `$emit`, `submit`, `setParams`, `$destroy`, `$nextTick`, `$el`,
+  `store`, `run`, `location`, `app` — no validity check — and emits nothing
+  while the customer types or leaves a field. The documented options
+  (Embedded custom page) have no way to disable the pay button until the
+  data is valid. [live 2026-11-13]
+- Leaving an empty or wrong field marks it (`f-control-error`: red border
+  only, no text). The texts (`.f-error`, from `messages`) appear after
+  `submit()`. [live 2026-11-13]
+- After `submit()` with invalid fields the widget marks every invalid field,
+  moves the focus to the first one and removes that field's mark and text
+  ~2 ms later while it has the focus — the customer sees that message only
+  flash; the other fields stay marked. Same with the widget's default
+  options. [live 2026-11-13]
 - Mounting a token whose order is already approved shows the widget's
   success view and fires `ready` with `order.order_data.order_status =
   approved` — not error 2009. [live 2026-07-17]
